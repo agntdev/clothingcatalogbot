@@ -7,7 +7,16 @@
         "expect": [
           {
             "method": "sendMessage",
-            "payload": { "text": "👋 Welcome! Tap a button below to get started." }
+            "payload": {
+              "text": "Добро пожаловать в каталог одежды.\nВыберите категорию, откройте товар и отправьте вопрос продавцу.",
+              "reply_markup": {
+                "inline_keyboard": [
+                  [{ "text": "Мужская", "callback_data": "category:male" }, { "text": "Женская", "callback_data": "category:female" }],
+                  [{ "text": "Детская", "callback_data": "category:kids" }, { "text": "Все товары", "callback_data": "category:all" }],
+                  [{ "text": "❓ Help", "callback_data": "menu:help" }]
+                ]
+              }
+            }
           }
         ]
       }

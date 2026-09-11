@@ -45,6 +45,84 @@ export interface WorkerEnv {
   BOT_TELEMETRY_SALT?: string;
 }
 
+interface CatalogState {
+  categories: Record<string, { id: string; title: string }>;
+  products: Record<string, unknown>;
+  categoryProductIds: Record<string, string[]>;
+  inquiries: Record<string, unknown>;
+  inquiryIds: string[];
+  users: Record<string, unknown>;
+}
+
+/**
+ * CatalogDO persists domain records separately from ephemeral chat sessions.
+ * Product and inquiry lists use explicit indices, so no operation scans storage.
+ * The platform's product-management UI writes product records and category indexes
+ * through this same binding before the catalogue is made public.
+ */
+export class CatalogDO {
+  constructor(private readonly state: DOState) {}
+
+  private async data(): Promise<CatalogState> {
+    return (await this.state.storage.get<CatalogState>("catalog")) ?? {
+      categories: {
+        male: { id: "male", title: "Мужская" },
+        female: { id: "female", title: "Женская" },
+        kids: { id: "kids", title: "Детская" },
+      },
+      products: {}, categoryProductIds: {}, inquiries: {}, inquiryIds: [], users: {},
+    };
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/^\/catalog/, "");
+    const data = await this.data();
+    if (request.method === "GET" && path === "/product") {
+      const item = data.products[url.searchParams.get("id") ?? ""];
+      return item ? Response.json(item) : new Response(null, { status: 404 });
+    }
+    if (request.method === "GET" && path === "/products") {
+      const category = url.searchParams.get("category") ?? "";
+      const ids = category === "all"
+        ? ["male", "female", "kids"].flatMap((id) => data.categoryProductIds[id] ?? [])
+        : data.categoryProductIds[category] ?? [];
+      return Response.json(ids.map((id) => data.products[id]).filter(Boolean));
+    }
+    if (request.method === "PUT" && path === "/product") {
+      const product = await request.json() as { id: string; category_id: string };
+      const existing = data.products[product.id] as { category_id?: string } | undefined;
+      if (existing?.category_id && existing.category_id !== product.category_id) {
+        data.categoryProductIds[existing.category_id] = (data.categoryProductIds[existing.category_id] ?? []).filter((id) => id !== product.id);
+      }
+      data.products[product.id] = product;
+      const index = data.categoryProductIds[product.category_id] ?? [];
+      if (!index.includes(product.id)) index.push(product.id);
+      data.categoryProductIds[product.category_id] = index;
+    } else if (request.method === "DELETE" && path === "/product") {
+      const id = url.searchParams.get("id") ?? "";
+      const existing = data.products[id] as { category_id?: string } | undefined;
+      if (existing?.category_id) data.categoryProductIds[existing.category_id] = (data.categoryProductIds[existing.category_id] ?? []).filter((productId) => productId !== id);
+      delete data.products[id];
+    } else if (request.method === "PUT" && path === "/user") {
+      const user = await request.json() as { user_id: number };
+      data.users[String(user.user_id)] = user;
+    } else if (request.method === "PUT" && path === "/inquiry") {
+      const inquiry = await request.json() as { id: string };
+      data.inquiries[inquiry.id] = inquiry;
+      if (!data.inquiryIds.includes(inquiry.id)) data.inquiryIds.push(inquiry.id);
+    } else if (request.method === "PUT" && path === "/inquiry/sent") {
+      const update = await request.json() as { id: string; sent_at: number };
+      const inquiry = data.inquiries[update.id] as Record<string, unknown> | undefined;
+      if (inquiry) inquiry.sent_to_admin_at = update.sent_at;
+    } else {
+      return new Response("not found", { status: 404 });
+    }
+    await this.state.storage.put("catalog", data);
+    return Response.json({ saved: true });
+  }
+}
+
 interface Reminder {
   at: number; // epoch ms
   chatId: number | string;
@@ -126,6 +204,12 @@ export class ChatDO {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    // Domain records share this durable namespace but live in the dedicated
+    // "catalog" instance, addressed by catalog.ts as idFromName("catalog").
+    if (url.pathname.startsWith("/catalog/")) {
+      return new CatalogDO(this.state).fetch(request);
+    }
 
     // Session storage (routed here by createDurableSessionStorage).
     if (url.pathname === "/session") {

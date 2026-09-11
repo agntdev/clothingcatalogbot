@@ -1,17 +1,30 @@
 import { Composer } from "grammy";
+import type { Ctx } from "../bot.js";
+import { categoryTitle, formatPrice, productById } from "../catalog.js";
+import { inlineButton, inlineKeyboard } from "../toolkit/index.js";
 
-// SCAFFOLD — generated from the bot blueprint BEFORE the agent runs.
-// Keep a LIVE registration (.command / .callbackQuery / …) so this feature is
-// never an empty stub. Replace the reply body with real logic + copy; if you
-// change the user-facing text, update tests/specs to match EXACTLY.
-// Do NOT rewrite src/bot.ts — buildBot() already auto-loads this module.
-// Menu: wire this into /start via registerMainMenuItem({ label: "View details", data: "product:view:<product_id>" }) if the toolkit exposes it.
+const composer = new Composer<Ctx>();
 
-const composer = new Composer();
-
-composer.callbackQuery("product:view:<product_id>", async (ctx) => {
+composer.callbackQuery(/^product:view:([^:]+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
-  await ctx.reply("Open product card with full photo, description and action buttons");
+  const product = await productById(ctx, ctx.match[1]);
+  if (!product) {
+    await ctx.editMessageText("Этот товар больше недоступен. Выберите другой товар в каталоге.", {
+      reply_markup: inlineKeyboard([[inlineButton("В главное меню", "menu:main")]]),
+    });
+    return;
+  }
+  const text = `${product.title}\n\n${product.short_description}\n\n${formatPrice(product)}${product.photo_file_id_or_url ? "" : "\n\nФото недоступно"}`;
+  const markup = inlineKeyboard([
+    [inlineButton("Задать вопрос", `inquiry:start:${product.id}`)],
+    [inlineButton("К категории", `category:${product.category_id}`)],
+    [inlineButton("В главное меню", "menu:main")],
+  ]);
+  if (product.photo_file_id_or_url) {
+    await ctx.replyWithPhoto(product.photo_file_id_or_url, { caption: text, reply_markup: markup });
+  } else {
+    await ctx.editMessageText(text, { reply_markup: markup });
+  }
 });
 
 export default composer;
