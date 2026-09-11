@@ -1,0 +1,16 @@
+[
+  {
+    "name": "order reports an unavailable product clearly",
+    "steps": [
+      {
+        "send": { "callback": "order:start:missing-product" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": { "text": "Этот товар больше недоступен. Выберите другой товар в каталоге." }
+          }
+        ]
+      }
+    ]
+  }
+]

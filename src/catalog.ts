@@ -4,12 +4,18 @@ export type CategoryId = "male" | "female" | "kids" | "all";
 
 export interface Product {
   id: string;
+  /** Owner-facing aliases retained with the catalogue's normalized fields. */
+  category?: "Мужская" | "Женская" | "Детская";
+  photo?: string;
+  description?: string;
   category_id: Exclude<CategoryId, "all">;
   photo_file_id_or_url?: string;
   title: string;
   short_description: string;
   price_minor_units: number;
   currency: string;
+  created_by_admin_id?: number;
+  created_at?: number;
 }
 
 export interface Inquiry {
@@ -20,6 +26,8 @@ export interface Inquiry {
   message_text: string;
   timestamp: number;
   sent_to_admin_at?: number;
+  product_snapshot?: { title: string; price_minor_units: number; photo_file_id_or_url?: string; photo_url?: string };
+  username?: string;
 }
 
 type CatalogStub = { fetch(input: string, init?: { method?: string; body?: string }): Promise<Response> };
@@ -87,6 +95,28 @@ export async function markInquirySent(ctx: Ctx, id: string, sentAt: number): Pro
   await request(ctx, "/catalog/inquiry/sent", {
     method: "PUT",
     body: JSON.stringify({ id, sent_at: sentAt }),
+  });
+}
+
+export async function saveProduct(ctx: Ctx, product: Product): Promise<boolean> {
+  return (await request<{ saved: boolean }>(ctx, "/catalog/product", {
+    method: "PUT",
+    body: JSON.stringify(product),
+  }))?.saved === true;
+}
+
+export async function deleteProduct(ctx: Ctx, id: string): Promise<boolean> {
+  return (await request<{ saved: boolean }>(ctx, `/catalog/product?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  }))?.saved === true;
+}
+
+export async function auditAdminAction(ctx: Ctx, action: "product_added" | "product_deleted", productId: string, timestamp: number): Promise<void> {
+  const adminId = ctx.from?.id;
+  if (!adminId) return;
+  await request(ctx, "/catalog/audit", {
+    method: "PUT",
+    body: JSON.stringify({ admin_id: adminId, action, product_id: productId, timestamp }),
   });
 }
 

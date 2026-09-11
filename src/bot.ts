@@ -8,6 +8,16 @@ import type { StorageAdapter } from "grammy";
 export interface Session {
   inquiryProductId?: string;
   inquiryStartedAt?: number;
+  adminDraft?: AdminProductDraft;
+  adminStep?: "category" | "photo" | "title" | "description" | "price" | "preview";
+}
+
+export interface AdminProductDraft {
+  category_id: "male" | "female" | "kids";
+  photo_file_id_or_url?: string;
+  title?: string;
+  short_description?: string;
+  price_minor_units?: number;
 }
 
 export type Ctx = BotContext<Session>;

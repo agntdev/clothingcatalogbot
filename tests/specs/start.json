@@ -13,6 +13,7 @@
                 "inline_keyboard": [
                   [{ "text": "Мужская", "callback_data": "category:male" }, { "text": "Женская", "callback_data": "category:female" }],
                   [{ "text": "Детская", "callback_data": "category:kids" }, { "text": "Все товары", "callback_data": "category:all" }],
+                  [{ "text": "Управление товарами", "callback_data": "admin:open" }],
                   [{ "text": "❓ Help", "callback_data": "menu:help" }]
                 ]
               }

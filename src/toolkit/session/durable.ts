@@ -52,6 +52,8 @@ interface CatalogState {
   inquiries: Record<string, unknown>;
   inquiryIds: string[];
   users: Record<string, unknown>;
+  auditIds?: string[];
+  audit?: Record<string, unknown>;
 }
 
 /**
@@ -70,7 +72,7 @@ export class CatalogDO {
         female: { id: "female", title: "Женская" },
         kids: { id: "kids", title: "Детская" },
       },
-      products: {}, categoryProductIds: {}, inquiries: {}, inquiryIds: [], users: {},
+      products: {}, categoryProductIds: {}, inquiries: {}, inquiryIds: [], users: {}, auditIds: [], audit: {},
     };
   }
 
@@ -115,6 +117,13 @@ export class CatalogDO {
       const update = await request.json() as { id: string; sent_at: number };
       const inquiry = data.inquiries[update.id] as Record<string, unknown> | undefined;
       if (inquiry) inquiry.sent_to_admin_at = update.sent_at;
+    } else if (request.method === "PUT" && path === "/audit") {
+      const action = await request.json() as { admin_id: number; action: string; product_id: string; timestamp: number };
+      const id = `${action.timestamp}:${action.admin_id}:${action.product_id}:${action.action}`;
+      data.audit ??= {};
+      data.auditIds ??= [];
+      data.audit[id] = action;
+      if (!data.auditIds.includes(id)) data.auditIds.push(id);
     } else {
       return new Response("not found", { status: 404 });
     }
