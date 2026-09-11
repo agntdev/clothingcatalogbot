@@ -2,7 +2,7 @@ import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
 import { markInquirySent, productById, saveInquiry, saveUser, type Inquiry, type Product } from "../catalog.js";
 import { now } from "../clock.js";
-import { adminChatId, inlineButton, inlineKeyboard } from "../toolkit/index.js";
+import { adminChatId, inlineButton, inlineKeyboard, urlButton } from "../toolkit/index.js";
 
 const composer = new Composer<Ctx>();
 const FLOW_TTL_MS = 5 * 60 * 1000;
@@ -22,10 +22,11 @@ async function notifyAdmin(ctx: Ctx, inquiry: Inquiry, product: Product): Promis
   const text = [
     "Новая заявка по товару",
     `Товар: ${product.title}`,
+    `Описание: ${product.short_description}`,
     `Цена: ${product.price_minor_units / 100} ₽`,
     `Сообщение: ${inquiry.message_text || "—"}`,
-    `Покупатель: ${inquiry.user_display_name} (Telegram ID: ${inquiry.user_id})`,
-    `Связаться: tg://user?id=${inquiry.user_id}`,
+      `Покупатель: ${inquiry.user_display_name}${inquiry.username ? ` (@${inquiry.username})` : ""} (Telegram ID: ${inquiry.user_id})`,
+      "Для ответа используйте кнопку ниже.",
   ].join("\n");
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -34,7 +35,9 @@ async function notifyAdmin(ctx: Ctx, inquiry: Inquiry, product: Product): Promis
           caption: `${product.title}\n${product.price_minor_units / 100} ₽`,
         });
       }
-      await ctx.api.sendMessage(admin, text);
+      await ctx.api.sendMessage(admin, text, {
+        reply_markup: inlineKeyboard([[urlButton("Ответить покупателю", `tg://user?id=${inquiry.user_id}`)]]),
+      });
       await markInquirySent(ctx, inquiry.id, now());
       return true;
     } catch {
@@ -63,6 +66,13 @@ async function finishInquiry(ctx: Ctx, message: string) {
     user_display_name: userDisplay(ctx),
     message_text: message.trim(),
     timestamp,
+    username: ctx.from.username,
+    product_snapshot: {
+      title: product.title,
+      price_minor_units: product.price_minor_units,
+      photo_file_id_or_url: product.photo_file_id_or_url,
+      photo_url: product.photo_file_id_or_url,
+    },
   };
   await saveUser(ctx, timestamp);
   const saved = await saveInquiry(ctx, inquiry);
@@ -93,6 +103,20 @@ composer.callbackQuery(/^inquiry:start:([^:]+)$/, async (ctx) => {
   });
 });
 
+composer.callbackQuery(/^order:start:([^:]+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const product = await productById(ctx, ctx.match[1]);
+  if (!product) {
+    await ctx.editMessageText("Этот товар больше недоступен. Выберите другой товар в каталоге.", {
+      reply_markup: inlineKeyboard([[inlineButton("В главное меню", "menu:main")]]),
+    });
+    return;
+  }
+  ctx.session.inquiryProductId = product.id;
+  ctx.session.inquiryStartedAt = now();
+  await finishInquiry(ctx, "");
+});
+
 composer.callbackQuery("inquiry:empty", async (ctx) => {
   await ctx.answerCallbackQuery();
   await finishInquiry(ctx, "");
@@ -100,7 +124,9 @@ composer.callbackQuery("inquiry:empty", async (ctx) => {
 
 composer.callbackQuery("inquiry:cancel", async (ctx) => {
   await ctx.answerCallbackQuery();
-  await finishInquiry(ctx, "");
+  ctx.session.inquiryProductId = undefined;
+  ctx.session.inquiryStartedAt = undefined;
+  await ctx.reply("Заявка отменена.");
 });
 
 composer.on("message:text", async (ctx, next) => {
