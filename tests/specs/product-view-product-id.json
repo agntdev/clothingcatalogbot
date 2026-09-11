@@ -1,0 +1,20 @@
+[
+  {
+    "name": "View details",
+    "steps": [
+      {
+        "expect": [
+          {
+            "method": "sendMessage",
+            "payload": {
+              "text": "Open product card with full photo, description and action buttons"
+            }
+          }
+        ],
+        "send": {
+          "callback": "product:view:\u003cproduct_id\u003e"
+        }
+      }
+    ]
+  }
+]
