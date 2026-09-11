@@ -3,9 +3,28 @@ import type { Ctx } from "../bot.js";
 import { markInquirySent, productById, saveInquiry, saveUser, type Inquiry, type Product } from "../catalog.js";
 import { now } from "../clock.js";
 import { adminChatId, inlineButton, inlineKeyboard, urlButton } from "../toolkit/index.js";
+import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 
 const composer = new Composer<Ctx>();
 const FLOW_TTL_MS = 5 * 60 * 1000;
+const NOTIFICATION_WAIT_MS = 2_500;
+
+/** Keep an inquiry update responsive if Telegram's admin delivery is slow. */
+async function notificationWithinDeadline(task: Promise<boolean>): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      task,
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), NOTIFICATION_WAIT_MS);
+      }),
+    ]);
+  } catch {
+    return false;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 function userDisplay(ctx: Ctx): string {
   const from = ctx.from;
@@ -50,47 +69,57 @@ async function notifyAdmin(ctx: Ctx, inquiry: Inquiry, product: Product): Promis
 
 async function finishInquiry(ctx: Ctx, message: string) {
   const productId = ctx.session.inquiryProductId;
-  ctx.session.inquiryProductId = undefined;
-  ctx.session.inquiryStartedAt = undefined;
-  if (!productId) return;
-  const product = await productById(ctx, productId);
-  if (!product || !ctx.from) {
-    await ctx.reply("Этот товар больше недоступен. Выберите другой товар в каталоге.");
+  if (ctx.session.inquirySubmitting) {
+    await ctx.reply("Заявка уже отправляется. Подождите немного.");
     return;
   }
-  const timestamp = now();
-  const inquiry: Inquiry = {
-    id: inquiryId(ctx.from.id, timestamp),
-    product_id: product.id,
-    user_id: ctx.from.id,
-    user_display_name: userDisplay(ctx),
-    message_text: message.trim(),
-    timestamp,
-    username: ctx.from.username,
-    product_snapshot: {
-      title: product.title,
-      price_minor_units: product.price_minor_units,
-      photo_file_id_or_url: product.photo_file_id_or_url,
-      photo_url: product.photo_file_id_or_url,
-    },
-  };
-  await saveUser(ctx, timestamp);
-  const saved = await saveInquiry(ctx, inquiry);
-  const delivered = saved && (await notifyAdmin(ctx, inquiry, product));
-  await ctx.reply(
-    delivered
-      ? "Заявка принята. Продавец свяжется с вами."
-      : "Ваша заявка сохранена, но администратор недоступен. Мы свяжемся с вами.",
-  );
+  ctx.session.inquirySubmitting = true;
+  ctx.session.inquiryProductId = undefined;
+  ctx.session.inquiryStartedAt = undefined;
+  try {
+    if (!productId) return;
+    const product = await productById(ctx, productId);
+    if (!product || !ctx.from) {
+      await ctx.reply("Этот товар больше недоступен. Выберите другой товар в каталоге.");
+      return;
+    }
+    const timestamp = now();
+    const inquiry: Inquiry = {
+      id: inquiryId(ctx.from.id, timestamp),
+      product_id: product.id,
+      user_id: ctx.from.id,
+      user_display_name: userDisplay(ctx),
+      message_text: message.trim(),
+      timestamp,
+      username: ctx.from.username,
+      product_snapshot: {
+        title: product.title,
+        price_minor_units: product.price_minor_units,
+        photo_file_id_or_url: product.photo_file_id_or_url,
+        photo_url: product.photo_file_id_or_url,
+      },
+    };
+    await saveUser(ctx, timestamp);
+    const saved = await saveInquiry(ctx, inquiry);
+    // The record is already durable. Do not hold the update queue for Telegram's
+    // network timeout; notifyAdmin continues its bounded retries in the
+    // background and marks the record when delivery succeeds.
+    const delivered = saved && (await notificationWithinDeadline(notifyAdmin(ctx, inquiry, product)));
+    await ctx.reply(
+      delivered
+        ? "Заявка принята. Продавец свяжется с вами."
+        : "Ваша заявка сохранена, но администратор недоступен. Мы свяжемся с вами.",
+    );
+  } finally {
+    ctx.session.inquirySubmitting = undefined;
+  }
 }
 
 composer.callbackQuery(/^inquiry:start:([^:]+)$/, async (ctx) => {
-  await ctx.answerCallbackQuery();
+  await answerCallback(ctx);
   const product = await productById(ctx, ctx.match[1]);
   if (!product) {
-    await ctx.editMessageText("Этот товар больше недоступен. Выберите другой товар в каталоге.", {
-      reply_markup: inlineKeyboard([[inlineButton("В главное меню", "menu:main")]]),
-    });
+    await replaceCallbackMessage(ctx, "Этот товар больше недоступен. Выберите другой товар в каталоге.", inlineKeyboard([[inlineButton("В главное меню", "menu:main")]]));
     return;
   }
   ctx.session.inquiryProductId = product.id;
@@ -104,12 +133,10 @@ composer.callbackQuery(/^inquiry:start:([^:]+)$/, async (ctx) => {
 });
 
 composer.callbackQuery(/^order:start:([^:]+)$/, async (ctx) => {
-  await ctx.answerCallbackQuery();
+  await answerCallback(ctx);
   const product = await productById(ctx, ctx.match[1]);
   if (!product) {
-    await ctx.editMessageText("Этот товар больше недоступен. Выберите другой товар в каталоге.", {
-      reply_markup: inlineKeyboard([[inlineButton("В главное меню", "menu:main")]]),
-    });
+    await replaceCallbackMessage(ctx, "Этот товар больше недоступен. Выберите другой товар в каталоге.", inlineKeyboard([[inlineButton("В главное меню", "menu:main")]]));
     return;
   }
   ctx.session.inquiryProductId = product.id;
@@ -118,12 +145,12 @@ composer.callbackQuery(/^order:start:([^:]+)$/, async (ctx) => {
 });
 
 composer.callbackQuery("inquiry:empty", async (ctx) => {
-  await ctx.answerCallbackQuery();
+  await answerCallback(ctx);
   await finishInquiry(ctx, "");
 });
 
 composer.callbackQuery("inquiry:cancel", async (ctx) => {
-  await ctx.answerCallbackQuery();
+  await answerCallback(ctx);
   ctx.session.inquiryProductId = undefined;
   ctx.session.inquiryStartedAt = undefined;
   await ctx.reply("Заявка отменена.");

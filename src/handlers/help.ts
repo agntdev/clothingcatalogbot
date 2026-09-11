@@ -1,6 +1,7 @@
 import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
 import { inlineButton, inlineKeyboard } from "../toolkit/index.js";
+import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 
 // /help — plain-language explanation for non-technical users. This bot is
 // button-driven: tell the user to tap /start to open the menu rather than listing
@@ -19,8 +20,8 @@ composer.command("help", async (ctx) => {
 });
 
 composer.callbackQuery("menu:help", async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.editMessageText(HELP, { reply_markup: backToMenu });
+  await answerCallback(ctx);
+  await replaceCallbackMessage(ctx, HELP, backToMenu);
 });
 
 export default composer;

@@ -57,9 +57,17 @@ export function createBot<S extends object>(
   // injected BOT_TELEMETRY_* at deploy — so dev, the test harness, and old bots
   // are byte-for-byte unchanged. Records salted user hashes only; best-effort.
   installActivityReporter(bot, opts.telemetryEnv, opts.telemetryReporterOptions);
-  bot.catch((err) => {
+  bot.catch(async (err) => {
     if (opts.onError) opts.onError(err);
     else console.error("[agntdev-bot] unhandled error:", err);
+    // A failed edit or transient transport error must not leave someone staring
+    // at a spinner. This is deliberately best-effort: the original API failure
+    // may also prevent the recovery reply.
+    try {
+      await err.ctx.reply("Не удалось выполнить действие. Попробуйте ещё раз.");
+    } catch {
+      // Reporting an error must never create another unhandled error.
+    }
   });
   return bot;
 }

@@ -8,6 +8,7 @@ import type { StorageAdapter } from "grammy";
 export interface Session {
   inquiryProductId?: string;
   inquiryStartedAt?: number;
+  inquirySubmitting?: boolean;
   adminDraft?: AdminProductDraft;
   adminStep?: "category" | "photo" | "title" | "description" | "price" | "preview";
 }

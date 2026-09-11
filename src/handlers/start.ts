@@ -3,6 +3,7 @@ import type { Ctx } from "../bot.js";
 import { mainMenuKeyboard } from "../toolkit/index.js";
 import { now } from "../clock.js";
 import { saveUser } from "../catalog.js";
+import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 
 // The /start handler renders the bot's MAIN MENU — the primary way users operate
 // a button-first bot. A feature adds its own button by calling
@@ -20,8 +21,8 @@ composer.command("start", async (ctx) => {
 
 // "Back to menu" — re-render the main menu in place from any sub-view.
 composer.callbackQuery("menu:main", async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.editMessageText(WELCOME, { reply_markup: mainMenuKeyboard() });
+  await answerCallback(ctx);
+  await replaceCallbackMessage(ctx, WELCOME, mainMenuKeyboard());
 });
 
 export default composer;

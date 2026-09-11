@@ -22,5 +22,17 @@
         ]
       }
     ]
+  },
+  {
+    "name": "main-menu callback is acknowledged before it redraws the menu",
+    "steps": [
+      {
+        "send": { "callback": "menu:main" },
+        "expect": [
+          { "method": "answerCallbackQuery" },
+          { "method": "editMessageText", "payload": { "text": "Добро пожаловать в каталог одежды.\nВыберите категорию, откройте товар и отправьте вопрос продавцу." } }
+        ]
+      }
+    ]
   }
 ]

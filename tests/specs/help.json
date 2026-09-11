@@ -20,7 +20,7 @@
     "steps": [
       {
         "send": { "callback": "menu:help" },
-        "expect": [{ "method": "editMessageText" }]
+        "expect": [{ "method": "answerCallbackQuery" }, { "method": "editMessageText" }]
       }
     ]
   }

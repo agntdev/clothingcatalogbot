@@ -4,6 +4,7 @@
     "steps": [
       {
         "expect": [
+          { "method": "answerCallbackQuery" },
           {
               "method": "editMessageText",
               "payload": {
@@ -23,7 +24,10 @@
     "steps": [
       {
         "send": { "callback": "category:page:male:99" },
-        "expect": [{ "method": "editMessageText", "payload": { "text": "В этой категории пока нет товаров. Открыта первая страница." } }]
+        "expect": [
+          { "method": "answerCallbackQuery" },
+          { "method": "editMessageText", "payload": { "text": "В этой категории пока нет товаров. Открыта первая страница." } }
+        ]
       }
     ]
   }
