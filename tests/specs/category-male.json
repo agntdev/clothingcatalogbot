@@ -6,9 +6,12 @@
         "expect": [
           { "method": "answerCallbackQuery" },
           {
-              "method": "sendMessage",
+              "method": "editMessageText",
               "payload": {
-              "text": "В этой категории пока нет товаров"
+              "text": "В этой категории пока нет товаров",
+              "reply_markup": {
+                "inline_keyboard": [[{ "text": "Назад", "callback_data": "menu:main" }]]
+              }
             }
           }
         ],
@@ -26,7 +29,7 @@
         "send": { "callback": "category:page:male:99" },
         "expect": [
           { "method": "answerCallbackQuery" },
-          { "method": "sendMessage", "payload": { "text": "В этой категории пока нет товаров. Открыта первая страница." } }
+          { "method": "editMessageText", "payload": { "text": "В этой категории пока нет товаров. Открыта первая страница." } }
         ]
       }
     ]
