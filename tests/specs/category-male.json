@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Мужская",
+    "steps": [
+      {
+        "expect": [
+          {
+            "method": "sendMessage",
+            "payload": {
+              "text": "Open the Мужская category product list (page 1)"
+            }
+          }
+        ],
+        "send": {
+          "callback": "category:male"
+        }
+      }
+    ]
+  }
+]
