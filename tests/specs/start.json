@@ -1,6 +1,6 @@
 [
   {
-    "name": "/start replies with the welcome + main menu",
+    "name": "/start sends a persistent in-chat category menu",
     "steps": [
       {
         "send": { "text": "/start" },
@@ -8,14 +8,24 @@
           {
             "method": "sendMessage",
             "payload": {
-              "text": "Добро пожаловать в каталог одежды.\nВыберите категорию, откройте товар и отправьте вопрос продавцу.",
+              "text": "Выберите раздел:",
               "reply_markup": {
                 "inline_keyboard": [
-                  [{ "text": "Мужская", "callback_data": "category:male" }, { "text": "Женская", "callback_data": "category:female" }],
-                  [{ "text": "Детская", "callback_data": "category:kids" }, { "text": "Все товары", "callback_data": "category:all" }],
-                  [{ "text": "Управление товарами", "callback_data": "admin:open" }],
-                  [{ "text": "❓ Help", "callback_data": "menu:help" }]
+                  [{ "text": "Мужская", "callback_data": "category:male" }],
+                  [{ "text": "Женская", "callback_data": "category:female" }],
+                  [{ "text": "Детская", "callback_data": "category:kids" }]
                 ]
+              }
+            }
+          },
+          {
+            "method": "sendMessage",
+            "payload": {
+              "text": "Каталог всегда можно открыть кнопкой «Меню».",
+              "reply_markup": {
+                "keyboard": [[{ "text": "Меню" }]],
+                "resize_keyboard": true,
+                "is_persistent": true
               }
             }
           }
@@ -24,13 +34,24 @@
     ]
   },
   {
-    "name": "main-menu callback is acknowledged before it redraws the menu",
+    "name": "menu callback is acknowledged and sends a new persistent menu",
     "steps": [
       {
         "send": { "callback": "menu:main" },
         "expect": [
           { "method": "answerCallbackQuery" },
-          { "method": "editMessageText", "payload": { "text": "Добро пожаловать в каталог одежды.\nВыберите категорию, откройте товар и отправьте вопрос продавцу." } }
+          { "method": "sendMessage", "payload": { "text": "Выберите раздел:" } }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "persistent menu control reopens the category menu",
+    "steps": [
+      {
+        "send": { "text": "Меню" },
+        "expect": [
+          { "method": "sendMessage", "payload": { "text": "Выберите раздел:" } }
         ]
       }
     ]

@@ -158,6 +158,13 @@ composer.callbackQuery("inquiry:cancel", async (ctx) => {
 
 composer.on("message:text", async (ctx, next) => {
   if (!ctx.session.inquiryProductId) return next();
+  // Navigation is always available, including while the optional note prompt is
+  // open. Do not accidentally send the word "Меню" (or a new /start) as a lead.
+  if (ctx.message.text === "Меню" || /^\/start(?:@[A-Za-z0-9_]+)?(?:\s|$)/.test(ctx.message.text)) {
+    ctx.session.inquiryProductId = undefined;
+    ctx.session.inquiryStartedAt = undefined;
+    return next();
+  }
   if ((ctx.session.inquiryStartedAt ?? 0) + FLOW_TTL_MS < now()) {
     ctx.session.inquiryProductId = undefined;
     ctx.session.inquiryStartedAt = undefined;
