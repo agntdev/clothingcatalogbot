@@ -1,20 +1,23 @@
 import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
-import { inlineButton, inlineKeyboard } from "../toolkit/index.js";
+import { inlineButton, inlineKeyboard, isOwner } from "../toolkit/index.js";
 import { now } from "../clock.js";
 import { saveUser } from "../catalog.js";
-import { answerCallback } from "../callbacks.js";
+import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 
 const composer = new Composer<Ctx>();
 
-const MENU_TEXT = "Выберите раздел:";
+const MENU_TEXT = "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.";
 
-function menuKeyboard() {
-  return inlineKeyboard([
+function menuKeyboard(ctx: Ctx) {
+  const rows = [
     [inlineButton("Мужская", "category:male")],
     [inlineButton("Женская", "category:female")],
     [inlineButton("Детская", "category:kids")],
-  ]);
+    [inlineButton("Browse All", "category:all")],
+  ];
+  if (isOwner(ctx)) rows.push([inlineButton("Управление товарами", "admin:open")]);
+  return inlineKeyboard(rows);
 }
 
 const persistentKeyboard = {
@@ -32,7 +35,7 @@ function clearPendingInquiry(ctx: Ctx): void {
 /** Send a durable navigation message rather than replacing product/list cards. */
 async function sendMenu(ctx: Ctx): Promise<void> {
   const menu = await ctx.reply(MENU_TEXT, {
-    reply_markup: menuKeyboard(),
+    reply_markup: menuKeyboard(ctx),
   });
   // Pinning is a convenience only: private-chat permissions and old clients may
   // reject it, while the reply keyboard remains an always-available fallback.
@@ -61,7 +64,7 @@ composer.command("start", async (ctx) => {
 composer.callbackQuery("menu:main", async (ctx) => {
   await answerCallback(ctx);
   clearPendingInquiry(ctx);
-  await sendMenu(ctx);
+  await replaceCallbackMessage(ctx, MENU_TEXT, menuKeyboard(ctx));
 });
 
 composer.hears("Меню", async (ctx) => {

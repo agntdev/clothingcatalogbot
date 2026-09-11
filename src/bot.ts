@@ -9,6 +9,8 @@ export interface Session {
   inquiryProductId?: string;
   inquiryStartedAt?: number;
   inquirySubmitting?: boolean;
+  catalogCategory?: "male" | "female" | "kids" | "all";
+  catalogPage?: number;
   adminDraft?: AdminProductDraft;
   adminStep?: "category" | "photo" | "title" | "description" | "price" | "preview";
 }

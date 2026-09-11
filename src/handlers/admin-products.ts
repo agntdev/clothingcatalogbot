@@ -21,7 +21,7 @@ async function owner(ctx: Ctx): Promise<boolean> {
 async function openAdmin(ctx: Ctx): Promise<void> {
   await replaceCallbackMessage(ctx, "Управляйте товарами каталога.", inlineKeyboard([
       [inlineButton("Добавить товар", "admin:add")],
-      [inlineButton("В главное меню", "menu:main")],
+      [inlineButton("Назад", "menu:main")],
     ]));
 }
 
@@ -73,6 +73,7 @@ async function preview(ctx: Ctx): Promise<void> {
     caption,
     reply_markup: inlineKeyboard([
       [inlineButton("Подтвердить", "admin:confirm"), inlineButton("Изменить", "admin:edit")],
+      [inlineButton("Назад", "admin:back")],
       [inlineButton("Отмена", "admin:cancel")],
     ]),
   });
@@ -81,7 +82,7 @@ async function preview(ctx: Ctx): Promise<void> {
 composer.command("admin", async (ctx) => {
   if (!(await requireOwner(ctx))) return;
   await ctx.reply("Управляйте товарами каталога.", {
-    reply_markup: inlineKeyboard([[inlineButton("Добавить товар", "admin:add")], [inlineButton("В главное меню", "menu:main")]]),
+    reply_markup: inlineKeyboard([[inlineButton("Добавить товар", "admin:add")], [inlineButton("Назад", "menu:main")]]),
   });
 });
 
@@ -128,7 +129,7 @@ composer.callbackQuery("admin:confirm", async (ctx) => {
     return;
   }
   await auditAdminAction(ctx, "product_added", product.id, timestamp);
-  await replaceCallbackMessage(ctx, "Товар сохранён.", inlineKeyboard([[inlineButton("Добавить товар", "admin:add")], [inlineButton("К управлению", "admin:open")]]));
+  await replaceCallbackMessage(ctx, "Товар сохранён.", inlineKeyboard([[inlineButton("Добавить товар", "admin:add")], [inlineButton("Назад", "admin:open")]]));
 });
 composer.callbackQuery(/^admin:delete:([^:]+)$/, async (ctx) => {
   if (!(await owner(ctx))) return;
@@ -142,7 +143,7 @@ composer.callbackQuery(/^admin:delete:yes:([^:]+)$/, async (ctx) => {
   const deleted = await deleteProduct(ctx, id);
   if (!deleted) { await replaceCallbackMessage(ctx, "Не удалось удалить товар. Попробуйте ещё раз."); return; }
   await auditAdminAction(ctx, "product_deleted", id, now());
-  await replaceCallbackMessage(ctx, "Товар удалён.", inlineKeyboard([[inlineButton("К управлению", "admin:open")]]));
+  await replaceCallbackMessage(ctx, "Товар удалён.", inlineKeyboard([[inlineButton("Назад", "admin:open")]]));
 });
 
 composer.on("message", async (ctx, next) => {

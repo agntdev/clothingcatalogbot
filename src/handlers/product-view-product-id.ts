@@ -1,12 +1,12 @@
 import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
-import { categoryTitle, formatPrice, productById } from "../catalog.js";
+import { formatPrice, productById, type CategoryId } from "../catalog.js";
 import { inlineButton, inlineKeyboard, isOwner } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 
 const composer = new Composer<Ctx>();
 
-composer.callbackQuery(/^product:view:([^:]+)$/, async (ctx) => {
+composer.callbackQuery(/^product:view:([^:]+)(?::(male|female|kids|all):(\d+))?$/, async (ctx) => {
   await answerCallback(ctx);
   const product = await productById(ctx, ctx.match[1]);
   if (!product) {
@@ -14,10 +14,14 @@ composer.callbackQuery(/^product:view:([^:]+)$/, async (ctx) => {
     return;
   }
   const text = `${product.title}\n\n${product.short_description}\n\n${formatPrice(product)}${product.photo_file_id_or_url ? "" : "\n\nФото недоступно"}`;
+  const category = (ctx.match[2] as CategoryId | undefined) ?? ctx.session.catalogCategory ?? product.category_id;
+  const page = Number(ctx.match[3] ?? ctx.session.catalogPage ?? 1);
+  ctx.session.catalogCategory = category;
+  ctx.session.catalogPage = page;
   const rows = [
     [inlineButton("Заказать", `order:start:${product.id}`)],
     [inlineButton("Задать вопрос", `inquiry:start:${product.id}`)],
-    [inlineButton("К категории", `category:${product.category_id}`)],
+    [inlineButton("Назад", `category:page:${category}:${page}`)],
     [inlineButton("В главное меню", "menu:main")],
   ];
   if (isOwner(ctx)) rows.splice(2, 0, [inlineButton("Удалить товар", `admin:delete:${product.id}`)]);
