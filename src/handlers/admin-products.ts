@@ -3,6 +3,7 @@ import type { AdminProductDraft, Ctx } from "../bot.js";
 import { auditAdminAction, categoryTitle, deleteProduct, formatPrice, productById, saveProduct, type CategoryId, type Product } from "../catalog.js";
 import { now } from "../clock.js";
 import { inlineButton, inlineKeyboard, registerMainMenuItem, requireOwner } from "../toolkit/index.js";
+import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 
 const composer = new Composer<Ctx>();
 
@@ -14,18 +15,16 @@ function clearDraft(ctx: Ctx): void {
 }
 
 async function owner(ctx: Ctx): Promise<boolean> {
+  await answerCallback(ctx);
   if (!(await requireOwner(ctx))) return false;
-  await ctx.answerCallbackQuery();
   return true;
 }
 
 async function openAdmin(ctx: Ctx): Promise<void> {
-  await ctx.editMessageText("Управляйте товарами каталога.", {
-    reply_markup: inlineKeyboard([
+  await replaceCallbackMessage(ctx, "Управляйте товарами каталога.", inlineKeyboard([
       [inlineButton("Добавить товар", "admin:add")],
       [inlineButton("В главное меню", "menu:main")],
-    ]),
-  });
+    ]));
 }
 
 async function chooseCategory(ctx: Ctx, edit = false): Promise<void> {
@@ -37,7 +36,7 @@ async function chooseCategory(ctx: Ctx, edit = false): Promise<void> {
       [inlineButton("Назад", "admin:open"), inlineButton("Отмена", "admin:cancel")],
     ]),
   };
-  if (edit) await ctx.editMessageText("Выберите категорию товара.", options);
+  if (edit) await replaceCallbackMessage(ctx, "Выберите категорию товара.", options.reply_markup);
   else await ctx.reply("Выберите категорию товара.", options);
 }
 
@@ -102,7 +101,7 @@ composer.callbackQuery(/^admin:category:(male|female|kids)$/, async (ctx) => {
 composer.callbackQuery("admin:cancel", async (ctx) => {
   if (!(await owner(ctx))) return;
   clearDraft(ctx);
-  await ctx.editMessageText("Добавление товара отменено.", { reply_markup: inlineKeyboard([[inlineButton("К управлению", "admin:open")]]) });
+  await replaceCallbackMessage(ctx, "Добавление товара отменено.", inlineKeyboard([[inlineButton("К управлению", "admin:open")]]));
 });
 composer.callbackQuery("admin:edit", async (ctx) => { if (await owner(ctx)) await chooseCategory(ctx, true); });
 composer.callbackQuery("admin:back", async (ctx) => {
@@ -119,7 +118,7 @@ composer.callbackQuery("admin:confirm", async (ctx) => {
   const draft = ctx.session.adminDraft;
   if (!completeDraft(draft) || !ctx.from) {
     clearDraft(ctx);
-    await ctx.editMessageText("Не удалось сохранить товар. Начните добавление ещё раз.");
+    await replaceCallbackMessage(ctx, "Не удалось сохранить товар. Начните добавление ещё раз.");
     return;
   }
   const timestamp = now();
@@ -127,25 +126,25 @@ composer.callbackQuery("admin:confirm", async (ctx) => {
   const saved = await saveProduct(ctx, product);
   clearDraft(ctx);
   if (!saved) {
-    await ctx.editMessageText("Не удалось сохранить товар. Попробуйте ещё раз.");
+    await replaceCallbackMessage(ctx, "Не удалось сохранить товар. Попробуйте ещё раз.");
     return;
   }
   await auditAdminAction(ctx, "product_added", product.id, timestamp);
-  await ctx.editMessageText(`Товар сохранён. ID товара: ${product.id}`, { reply_markup: inlineKeyboard([[inlineButton("Добавить товар", "admin:add")], [inlineButton("К управлению", "admin:open")]]) });
+  await replaceCallbackMessage(ctx, "Товар сохранён.", inlineKeyboard([[inlineButton("Добавить товар", "admin:add")], [inlineButton("К управлению", "admin:open")]]));
 });
 composer.callbackQuery(/^admin:delete:([^:]+)$/, async (ctx) => {
   if (!(await owner(ctx))) return;
   const product = await productById(ctx, ctx.match[1]);
-  if (!product) { await ctx.editMessageText("Этот товар уже удалён."); return; }
-  await ctx.editMessageText(`Удалить товар «${product.title}»?`, { reply_markup: inlineKeyboard([[inlineButton("Удалить", `admin:delete:yes:${product.id}`), inlineButton("Назад", `product:view:${product.id}`)]]) });
+  if (!product) { await replaceCallbackMessage(ctx, "Этот товар уже удалён."); return; }
+  await replaceCallbackMessage(ctx, `Удалить товар «${product.title}»?`, inlineKeyboard([[inlineButton("Удалить", `admin:delete:yes:${product.id}`), inlineButton("Назад", `product:view:${product.id}`)]]));
 });
 composer.callbackQuery(/^admin:delete:yes:([^:]+)$/, async (ctx) => {
   if (!(await owner(ctx))) return;
   const id = ctx.match[1];
   const deleted = await deleteProduct(ctx, id);
-  if (!deleted) { await ctx.editMessageText("Не удалось удалить товар. Попробуйте ещё раз."); return; }
+  if (!deleted) { await replaceCallbackMessage(ctx, "Не удалось удалить товар. Попробуйте ещё раз."); return; }
   await auditAdminAction(ctx, "product_deleted", id, now());
-  await ctx.editMessageText(`Товар удалён. ID товара: ${id}`, { reply_markup: inlineKeyboard([[inlineButton("К управлению", "admin:open")]]) });
+  await replaceCallbackMessage(ctx, "Товар удалён.", inlineKeyboard([[inlineButton("К управлению", "admin:open")]]));
 });
 
 composer.on("message", async (ctx, next) => {

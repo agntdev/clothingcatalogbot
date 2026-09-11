@@ -4,6 +4,7 @@
     "steps": [
       {
         "expect": [
+          { "method": "answerCallbackQuery" },
           {
               "method": "editMessageText",
               "payload": {
@@ -14,6 +15,19 @@
         "send": {
           "callback": "inquiry:start:missing-product"
         }
+      }
+    ]
+  },
+  {
+    "name": "optional inquiry action is acknowledged immediately",
+    "steps": [
+      {
+        "send": { "callback": "inquiry:empty" },
+        "expect": [{ "method": "answerCallbackQuery" }]
+      },
+      {
+        "send": { "callback": "inquiry:cancel" },
+        "expect": [{ "method": "answerCallbackQuery" }, { "method": "sendMessage", "payload": { "text": "Заявка отменена." } }]
       }
     ]
   }

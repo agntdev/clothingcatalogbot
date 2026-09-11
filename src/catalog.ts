@@ -30,7 +30,7 @@ export interface Inquiry {
   username?: string;
 }
 
-type CatalogStub = { fetch(input: string, init?: { method?: string; body?: string }): Promise<Response> };
+type CatalogStub = { fetch(input: string, init?: RequestInit): Promise<Response> };
 type CatalogEnv = { CHAT_DO?: { idFromName(name: string): unknown; get(id: unknown): CatalogStub } };
 
 const categories: ReadonlyArray<{ id: Exclude<CategoryId, "all">; title: string }> = [
@@ -45,15 +45,25 @@ function stub(ctx: Ctx): CatalogStub | undefined {
   return namespace?.get(namespace.idFromName("catalog"));
 }
 
-async function request<T>(ctx: Ctx, path: string, init?: { method?: string; body?: string }): Promise<T | undefined> {
+const CATALOG_TIMEOUT_MS = 2_500;
+
+async function request<T>(ctx: Ctx, path: string, init?: RequestInit): Promise<T | undefined> {
   const target = stub(ctx);
   if (!target) return undefined;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CATALOG_TIMEOUT_MS);
   try {
-    const response = await target.fetch(`https://catalog${path}`, init);
+    const response = await target.fetch(`https://catalog${path}`, {
+      ...init,
+      ...(init?.body ? { headers: { "content-type": "application/json" } } : {}),
+      signal: controller.signal,
+    });
     if (!response.ok) return undefined;
     return (await response.json()) as T;
   } catch {
     return undefined;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

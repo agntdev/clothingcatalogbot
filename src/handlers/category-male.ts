@@ -2,6 +2,7 @@ import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
 import { categoryTitle, formatPrice, productsFor, type CategoryId } from "../catalog.js";
 import { inlineButton, inlineKeyboard, registerMainMenuItem } from "../toolkit/index.js";
+import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 
 const composer = new Composer<Ctx>();
 const PAGE_SIZE = 8;
@@ -30,15 +31,13 @@ async function preview(ctx: Ctx, id: CategoryId, wantedPage: number) {
   const page = Math.min(Math.max(1, wantedPage), pages);
   const resetNote = page !== wantedPage ? " Страница обновлена." : "";
   if (products.length === 0) {
-    await ctx.editMessageText(
+    await replaceCallbackMessage(ctx,
       wantedPage === page ? "В этой категории пока нет товаров" : "В этой категории пока нет товаров. Открыта первая страница.",
-      { reply_markup: controls(id, 1, 0) },
+      controls(id, 1, 0),
     );
     return;
   }
-  await ctx.editMessageText(`${categoryTitle(id)} — страница ${page} из ${pages}.${resetNote}`, {
-    reply_markup: controls(id, page, products.length),
-  });
+  await replaceCallbackMessage(ctx, `${categoryTitle(id)} — страница ${page} из ${pages}.${resetNote}`, controls(id, page, products.length));
   for (const product of products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)) {
     const text = `${product.title}\n${formatPrice(product)}`;
     const markup = inlineKeyboard([
@@ -54,17 +53,17 @@ async function preview(ctx: Ctx, id: CategoryId, wantedPage: number) {
 }
 
 composer.callbackQuery("category:male", async (ctx) => {
-  await ctx.answerCallbackQuery();
+  await answerCallback(ctx);
   await preview(ctx, "male", 1);
 });
 
 composer.callbackQuery(/^category:(female|kids|all)$/, async (ctx) => {
-  await ctx.answerCallbackQuery();
+  await answerCallback(ctx);
   await preview(ctx, ctx.match[1] as CategoryId, 1);
 });
 
 composer.callbackQuery(/^category:page:(male|female|kids|all):(\d+)$/, async (ctx) => {
-  await ctx.answerCallbackQuery();
+  await answerCallback(ctx);
   await preview(ctx, ctx.match[1] as CategoryId, Number(ctx.match[2]));
 });
 
