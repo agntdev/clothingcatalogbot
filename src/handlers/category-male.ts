@@ -1,16 +1,11 @@
 import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
 import { categoryTitle, formatPrice, productsFor, type CategoryId } from "../catalog.js";
-import { inlineButton, inlineKeyboard, registerMainMenuItem } from "../toolkit/index.js";
-import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
+import { inlineButton, inlineKeyboard } from "../toolkit/index.js";
+import { answerCallback } from "../callbacks.js";
 
 const composer = new Composer<Ctx>();
 const PAGE_SIZE = 8;
-
-registerMainMenuItem({ label: "Мужская", data: "category:male", order: 10 });
-registerMainMenuItem({ label: "Женская", data: "category:female", order: 20 });
-registerMainMenuItem({ label: "Детская", data: "category:kids", order: 30 });
-registerMainMenuItem({ label: "Все товары", data: "category:all", order: 40 });
 
 function controls(category: CategoryId, page: number, total: number) {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -31,13 +26,17 @@ async function preview(ctx: Ctx, id: CategoryId, wantedPage: number) {
   const page = Math.min(Math.max(1, wantedPage), pages);
   const resetNote = page !== wantedPage ? " Страница обновлена." : "";
   if (products.length === 0) {
-    await replaceCallbackMessage(ctx,
+    // The category can be opened from the pinned menu. Send its view separately
+    // so that navigation never replaces the menu users rely on returning to.
+    await ctx.reply(
       wantedPage === page ? "В этой категории пока нет товаров" : "В этой категории пока нет товаров. Открыта первая страница.",
-      controls(id, 1, 0),
+      { reply_markup: controls(id, 1, 0) },
     );
     return;
   }
-  await replaceCallbackMessage(ctx, `${categoryTitle(id)} — страница ${page} из ${pages}.${resetNote}`, controls(id, page, products.length));
+  await ctx.reply(`${categoryTitle(id)} — страница ${page} из ${pages}.${resetNote}`, {
+    reply_markup: controls(id, page, products.length),
+  });
   for (const product of products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)) {
     const text = `${product.title}\n${formatPrice(product)}`;
     const markup = inlineKeyboard([

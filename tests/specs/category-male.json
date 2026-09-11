@@ -6,7 +6,7 @@
         "expect": [
           { "method": "answerCallbackQuery" },
           {
-              "method": "editMessageText",
+              "method": "sendMessage",
               "payload": {
               "text": "В этой категории пока нет товаров"
             }
@@ -26,7 +26,7 @@
         "send": { "callback": "category:page:male:99" },
         "expect": [
           { "method": "answerCallbackQuery" },
-          { "method": "editMessageText", "payload": { "text": "В этой категории пока нет товаров. Открыта первая страница." } }
+          { "method": "sendMessage", "payload": { "text": "В этой категории пока нет товаров. Открыта первая страница." } }
         ]
       }
     ]

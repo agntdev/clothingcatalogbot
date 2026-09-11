@@ -2,12 +2,10 @@ import { Composer } from "grammy";
 import type { AdminProductDraft, Ctx } from "../bot.js";
 import { auditAdminAction, categoryTitle, deleteProduct, formatPrice, productById, saveProduct, type CategoryId, type Product } from "../catalog.js";
 import { now } from "../clock.js";
-import { inlineButton, inlineKeyboard, registerMainMenuItem, requireOwner } from "../toolkit/index.js";
+import { inlineButton, inlineKeyboard, requireOwner } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 
 const composer = new Composer<Ctx>();
-
-registerMainMenuItem({ label: "Управление товарами", data: "admin:open", order: 90 });
 
 function clearDraft(ctx: Ctx): void {
   ctx.session.adminDraft = undefined;

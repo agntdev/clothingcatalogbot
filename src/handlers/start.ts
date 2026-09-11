@@ -1,28 +1,73 @@
 import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
-import { mainMenuKeyboard } from "../toolkit/index.js";
+import { inlineButton, inlineKeyboard } from "../toolkit/index.js";
 import { now } from "../clock.js";
 import { saveUser } from "../catalog.js";
-import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
+import { answerCallback } from "../callbacks.js";
 
-// The /start handler renders the bot's MAIN MENU — the primary way users operate
-// a button-first bot. A feature adds its own button by calling
-// `registerMainMenuItem(...)` in its own `src/handlers/<slug>.ts`; this handler
-// renders whatever is registered (plus a Help button), so you do NOT edit this
-// file to add a feature. Send ONE message — no placeholder line above the menu.
 const composer = new Composer<Ctx>();
 
-const WELCOME = "Добро пожаловать в каталог одежды.\nВыберите категорию, откройте товар и отправьте вопрос продавцу.";
+const MENU_TEXT = "Выберите раздел:";
+
+function menuKeyboard() {
+  return inlineKeyboard([
+    [inlineButton("Мужская", "category:male")],
+    [inlineButton("Женская", "category:female")],
+    [inlineButton("Детская", "category:kids")],
+  ]);
+}
+
+const persistentKeyboard = {
+  keyboard: [[{ text: "Меню" }]],
+  resize_keyboard: true,
+  is_persistent: true,
+  input_field_placeholder: "Выберите «Меню» для каталога",
+};
+
+function clearPendingInquiry(ctx: Ctx): void {
+  ctx.session.inquiryProductId = undefined;
+  ctx.session.inquiryStartedAt = undefined;
+}
+
+/** Send a durable navigation message rather than replacing product/list cards. */
+async function sendMenu(ctx: Ctx): Promise<void> {
+  const menu = await ctx.reply(MENU_TEXT, {
+    reply_markup: menuKeyboard(),
+  });
+  // Pinning is a convenience only: private-chat permissions and old clients may
+  // reject it, while the reply keyboard remains an always-available fallback.
+  if (ctx.chat?.type === "private") {
+    try {
+      await ctx.api.pinChatMessage(ctx.chat.id, menu.message_id, {
+        disable_notification: true,
+      });
+    } catch {
+      // The menu was still sent successfully, so no user-facing error is needed.
+    }
+  }
+}
 
 composer.command("start", async (ctx) => {
   await saveUser(ctx, now());
-  await ctx.reply(WELCOME, { reply_markup: mainMenuKeyboard() });
+  await sendMenu(ctx);
+  // Keep this control after every navigation step without creating another menu.
+  await ctx.reply("Каталог всегда можно открыть кнопкой «Меню».", {
+    reply_markup: persistentKeyboard,
+  });
 });
 
-// "Back to menu" — re-render the main menu in place from any sub-view.
+// A card's menu action must not consume the pinned menu message: send a fresh,
+// durable menu in the private chat instead.
 composer.callbackQuery("menu:main", async (ctx) => {
   await answerCallback(ctx);
-  await replaceCallbackMessage(ctx, WELCOME, mainMenuKeyboard());
+  clearPendingInquiry(ctx);
+  await sendMenu(ctx);
+});
+
+composer.hears("Меню", async (ctx) => {
+  clearPendingInquiry(ctx);
+  await saveUser(ctx, now());
+  await sendMenu(ctx);
 });
 
 export default composer;
