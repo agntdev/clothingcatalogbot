@@ -5,14 +5,14 @@
       {
         "expect": [
           {
-            "method": "sendMessage",
-            "payload": {
-              "text": "Open a ForceReply modal asking for an optional message to send to admin about this product"
+              "method": "editMessageText",
+              "payload": {
+              "text": "Этот товар больше недоступен. Выберите другой товар в каталоге."
             }
           }
         ],
         "send": {
-          "callback": "inquiry:start:\u003cproduct_id\u003e"
+          "callback": "inquiry:start:missing-product"
         }
       }
     ]

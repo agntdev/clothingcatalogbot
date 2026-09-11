@@ -5,15 +5,25 @@
       {
         "expect": [
           {
-            "method": "sendMessage",
-            "payload": {
-              "text": "Open the Мужская category product list (page 1)"
+              "method": "editMessageText",
+              "payload": {
+              "text": "В этой категории пока нет товаров"
             }
           }
         ],
         "send": {
           "callback": "category:male"
         }
+      }
+    ]
+  }
+  ,
+  {
+    "name": "invalid catalogue page returns nearest page",
+    "steps": [
+      {
+        "send": { "callback": "category:page:male:99" },
+        "expect": [{ "method": "editMessageText", "payload": { "text": "В этой категории пока нет товаров. Открыта первая страница." } }]
       }
     ]
   }
