@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { AdminProductDraft, Ctx } from "../bot.js";
-import { auditAdminAction, categoryTitle, deleteProduct, formatPrice, productById, saveProduct, type CategoryId, type Product } from "../catalog.js";
+import { auditAdminAction, categoriesFor, categoryById, categoryTitle, deleteCategory, deleteProduct, formatPrice, productById, saveCategory, saveProduct, type CategoryId, type Product } from "../catalog.js";
 import { now } from "../clock.js";
 import { inlineButton, inlineKeyboard, requireOwner } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
@@ -21,8 +21,19 @@ async function owner(ctx: Ctx): Promise<boolean> {
 async function openAdmin(ctx: Ctx): Promise<void> {
   await replaceCallbackMessage(ctx, "Управляйте товарами каталога.", inlineKeyboard([
       [inlineButton("Добавить товар", "admin:add")],
+      [inlineButton("Подразделы", "admin:sections")],
       [inlineButton("Назад", "menu:main")],
     ]));
+}
+
+async function sections(ctx: Ctx, parentId?: string): Promise<void> {
+  ctx.session.adminCategoryParentId = parentId;
+  const entries = await categoriesFor(ctx, parentId);
+  const title = parentId ? (await categoryById(ctx, parentId))?.title ?? "раздел" : "главный раздел";
+  const rows = entries.map((entry) => [inlineButton(entry.title, `admin:section:${entry.id}`)]);
+  if (parentId) rows.push([inlineButton("Добавить подраздел", "admin:section:add")]);
+  rows.push([inlineButton("Назад", parentId ? "admin:sections" : "admin:open")]);
+  await replaceCallbackMessage(ctx, parentId ? `Подразделы «${title}».` : "Выберите раздел для управления подразделами.", inlineKeyboard(rows));
 }
 
 async function chooseCategory(ctx: Ctx, edit = false): Promise<void> {
@@ -79,14 +90,39 @@ async function preview(ctx: Ctx): Promise<void> {
   });
 }
 
-composer.command("admin", async (ctx) => {
-  if (!(await requireOwner(ctx))) return;
-  await ctx.reply("Управляйте товарами каталога.", {
-    reply_markup: inlineKeyboard([[inlineButton("Добавить товар", "admin:add")], [inlineButton("Назад", "menu:main")]]),
-  });
-});
-
 composer.callbackQuery("admin:open", async (ctx) => { if (await owner(ctx)) await openAdmin(ctx); });
+composer.callbackQuery("admin:sections", async (ctx) => { if (await owner(ctx)) await sections(ctx); });
+composer.callbackQuery(/^admin:section:([^:]+)$/, async (ctx) => {
+  if (!(await owner(ctx))) return;
+  const category = await categoryById(ctx, ctx.match[1]);
+  if (!category) { await sections(ctx, ctx.session.adminCategoryParentId); return; }
+  if (!category.parent_id) { await sections(ctx, category.id); return; }
+  ctx.session.adminCategoryTargetId = category.id;
+  await replaceCallbackMessage(ctx, `Подраздел «${category.title}».`, inlineKeyboard([
+    [inlineButton("Переименовать", "admin:section:rename")],
+    [inlineButton("Удалить", "admin:section:delete")],
+    [inlineButton("Назад", `admin:section:${category.parent_id}`)],
+  ]));
+});
+composer.callbackQuery("admin:section:add", async (ctx) => {
+  if (!(await owner(ctx))) return;
+  if (!ctx.session.adminCategoryParentId) { await sections(ctx); return; }
+  ctx.session.adminStep = "section_name";
+  await ctx.reply("Введите название подраздела.", { reply_markup: { force_reply: true, input_field_placeholder: "Название подраздела" } });
+});
+composer.callbackQuery("admin:section:rename", async (ctx) => {
+  if (!(await owner(ctx))) return;
+  if (!ctx.session.adminCategoryTargetId) { await sections(ctx, ctx.session.adminCategoryParentId); return; }
+  ctx.session.adminStep = "section_rename";
+  await ctx.reply("Введите новое название подраздела.", { reply_markup: { force_reply: true, input_field_placeholder: "Новое название" } });
+});
+composer.callbackQuery("admin:section:delete", async (ctx) => {
+  if (!(await owner(ctx))) return;
+  const id = ctx.session.adminCategoryTargetId;
+  if (!id) { await sections(ctx, ctx.session.adminCategoryParentId); return; }
+  const deleted = await deleteCategory(ctx, id);
+  await replaceCallbackMessage(ctx, deleted ? "Подраздел удалён." : "Нельзя удалить подраздел с товарами или вложенными разделами.", inlineKeyboard([[inlineButton("Назад", "admin:sections")]]));
+});
 composer.callbackQuery("admin:add", async (ctx) => {
   if (!(await owner(ctx))) return;
   clearDraft(ctx);
@@ -94,7 +130,7 @@ composer.callbackQuery("admin:add", async (ctx) => {
 });
 composer.callbackQuery(/^admin:category:(male|female|kids)$/, async (ctx) => {
   if (!(await owner(ctx))) return;
-  ctx.session.adminDraft = { category_id: ctx.match[1] as Exclude<CategoryId, "all"> };
+  ctx.session.adminDraft = { category_id: ctx.match[1] as AdminProductDraft["category_id"] };
   await askPhoto(ctx);
 });
 composer.callbackQuery("admin:cancel", async (ctx) => {
@@ -149,7 +185,22 @@ composer.callbackQuery(/^admin:delete:yes:([^:]+)$/, async (ctx) => {
 composer.on("message", async (ctx, next) => {
   const step = ctx.session.adminStep;
   const draft = ctx.session.adminDraft;
-  if (!step || !draft || !ctx.from) return next();
+  if (!step || !ctx.from) return next();
+  if (step === "section_name" || step === "section_rename") {
+    const title = ctx.message.text?.trim();
+    if (!title || title.length > 60) { await ctx.reply("Введите название до 60 символов."); return; }
+    if (step === "section_name" && ctx.session.adminCategoryParentId) {
+      await saveCategory(ctx, { id: crypto.randomUUID(), title, parent_id: ctx.session.adminCategoryParentId });
+    } else if (step === "section_rename" && ctx.session.adminCategoryTargetId) {
+      const old = await categoryById(ctx, ctx.session.adminCategoryTargetId);
+      if (old) await saveCategory(ctx, { ...old, title });
+    }
+    const parent = ctx.session.adminCategoryParentId;
+    ctx.session.adminStep = undefined;
+    await sections(ctx, parent);
+    return;
+  }
+  if (!draft) return next();
   if (step === "photo") {
     const photo = ctx.message.photo?.at(-1)?.file_id;
     if (!photo) { await ctx.reply("Нужно отправить фото товара. Попробуйте ещё раз."); return; }
