@@ -247,6 +247,15 @@ export async function saveProduct(ctx: Ctx, product: Product): Promise<boolean> 
   }))?.saved === true;
 }
 
+/** Create a catalogue product. New records deliberately use POST: PUT is only
+ * for changing a product that already has its durable product id. */
+export async function createProduct(ctx: Ctx, product: Omit<Product, "id">): Promise<Product | undefined> {
+  return request<Product>(ctx, "/catalog/product", {
+    method: "POST",
+    body: JSON.stringify(product),
+  });
+}
+
 export async function deleteProduct(ctx: Ctx, id: string): Promise<boolean> {
   return (await request<{ saved: boolean }>(ctx, `/catalog/product?id=${encodeURIComponent(id)}`, {
     method: "DELETE",

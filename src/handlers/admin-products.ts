@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { Ctx, AdminCategoryDraft, AdminProductDraft } from "../bot.js";
-import { auditAdminAction, auditDeniedAdminAction, categoriesFor, categoryById, clearCartForOwner, deleteCategory, deleteComment, deleteProduct, formatPrice, inquiriesForOwner, markInquiryProcessed, productById, productsFor, recentCommentsForOwner, saveCategory, saveProduct, type Category, type Product } from "../catalog.js";
+import { auditAdminAction, auditDeniedAdminAction, categoriesFor, categoryById, clearCartForOwner, createProduct, deleteCategory, deleteComment, deleteProduct, formatPrice, inquiriesForOwner, markInquiryProcessed, productById, productsFor, recentCommentsForOwner, saveCategory, saveProduct, type Category, type Product } from "../catalog.js";
 import { now } from "../clock.js";
 import { inlineButton, inlineKeyboard, isOwner, requireOwner } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
@@ -80,8 +80,13 @@ async function photoMenu(ctx: Ctx) { const photos = productDraft(ctx)?.photos ??
 async function finishProduct(ctx: Ctx) {
   const d = productDraft(ctx); if (!d?.title || !d.price_minor_units || !d.category_id || !ctx.from) { clear(ctx); return ctx.reply("Не удалось сохранить товар. Проверьте название и цену."); }
   const photos = d.photos ?? [];
-  const product = stamp<Product>({ id: d.id ?? crypto.randomUUID(), category_id: d.category_id, title: d.title, short_description: d.short_description ?? "", price_minor_units: d.price_minor_units, currency: "RUB", photos, photo_file_id_or_url: photos[0], sku: d.sku, visible: d.visible ?? true, available: d.available ?? true, order: d.order, created_by_admin_id: ctx.from.id, created_at: d.created_at ?? now() }, ctx);
-  const saved = await saveProduct(ctx, product); await auditAdminAction(ctx, d.id ? "product_updated" : "product_created", product.id, now()); clear(ctx);
+  const draft = stamp<Omit<Product, "id">>({ category_id: d.category_id, title: d.title, short_description: d.short_description ?? "", price_minor_units: d.price_minor_units, currency: "RUB", photos, photo_file_id_or_url: photos[0], sku: d.sku, visible: d.visible ?? true, available: d.available ?? true, order: d.order, created_by_admin_id: ctx.from.id, created_at: d.created_at ?? now() }, ctx);
+  const product = d.id ? { ...draft, id: d.id } : undefined;
+  const created = d.id ? undefined : await createProduct(ctx, draft);
+  const saved = product ? await saveProduct(ctx, product) : Boolean(created);
+  const productId = product?.id ?? created?.id;
+  if (saved && productId) await auditAdminAction(ctx, d.id ? "product_updated" : "product_created", productId, now());
+  clear(ctx);
   await replaceCallbackMessage(ctx, saved ? "Товар сохранён. Изменения уже видны в каталоге." : "Не удалось сохранить товар. Попробуйте ещё раз.", inlineKeyboard([back("admin:products:all:1"), rowsMenu()]));
 }
 async function parentPicker(ctx: Ctx, page: number, mode: "new" | "move-category" | "move-product") {

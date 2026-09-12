@@ -35,5 +35,14 @@
         "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
       }
     ]
+  },
+  {
+    "name": "adding a product stays protected until owner access is configured",
+    "steps": [
+      {
+        "send": { "callback": "admin:product:add:male" },
+        "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
+      }
+    ]
   }
 ]
