@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { CatalogView, Ctx } from "../bot.js";
-import { categoryById, categoryTitle, formatPrice, productsFor } from "../catalog.js";
+import { categoriesFor, categoryById, categoryTitle, formatPrice, productsFor } from "../catalog.js";
 import { inlineButton, inlineKeyboard, isOwner } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 import { currentView, popView, pushView } from "../navigation.js";
@@ -36,15 +36,43 @@ export async function renderList(ctx: Ctx, categoryId: string, wantedPage: numbe
 
 export async function renderView(ctx: Ctx, view: CatalogView): Promise<void> {
   if (view.kind === "menu") {
-    const rows = [
-      [inlineButton("Одежда", "category:clothes")], [inlineButton("Обувь", "category:shoes")], [inlineButton("Аксессуары", "category:accessories")], [inlineButton("Все товары", "category:list:all:1")],
-    ];
+    const roots = await categoriesFor(ctx, null);
+    const rows = roots.map((category) => [inlineButton(category.title.slice(0, 60), `category:open:${category.id}`)]);
+    rows.push([inlineButton("Все товары", "category:list:all:1")]);
     if (isOwner(ctx)) rows.push([inlineButton("Управление каталогом", "admin:open")]);
     await replaceCallbackMessage(ctx, "Выберите категорию. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.", inlineKeyboard(rows));
   } else if (view.kind === "list" && view.categoryId) await renderList(ctx, view.categoryId, view.page ?? 1);
+  else if (view.kind === "section" && view.categoryId) await openCategory(ctx, view.categoryId);
+}
+
+async function openCategory(ctx: Ctx, categoryId: string): Promise<void> {
+  const category = await categoryById(ctx, categoryId);
+  if (!category) {
+    await replaceCallbackMessage(ctx, "Этот раздел больше недоступен. Выберите другой раздел.", inlineKeyboard([mainMenuRow()]));
+    return;
+  }
+  const children = await categoriesFor(ctx, category.id);
+  if (!children.length) {
+    pushView(ctx, { kind: "list", categoryId: category.id, page: 1 });
+    await renderList(ctx, category.id, 1);
+    return;
+  }
+  pushView(ctx, { kind: "section", categoryId: category.id });
+  const rows = children.map((child) => [inlineButton(child.title.slice(0, 60), `category:open:${child.id}`)]);
+  rows.push(backRow(), mainMenuRow());
+  const note = category.description ? `\n\n${category.description}` : "";
+  const text = `${category.title}${note}\n\nВыберите подраздел.`;
+  const keyboard = inlineKeyboard(rows);
+  const source = ctx.callbackQuery?.message;
+  if (category.image_file_id && source && !("photo" in source)) {
+    try { await ctx.deleteMessage(); } catch { /* an old message can still be replaced below */ }
+    try { await ctx.replyWithPhoto(category.image_file_id, { caption: text, reply_markup: keyboard }); return; } catch { /* a removed Telegram file must not block browsing */ }
+  }
+  await replaceCallbackMessage(ctx, text, keyboard);
 }
 
 composer.callbackQuery(/^category:(clothes|shoes|accessories)$/, async (ctx) => { await answerCallback(ctx); pushView(ctx, { kind: "list", categoryId: ctx.match[1], page: 1 }); await renderList(ctx, ctx.match[1], 1); });
+composer.callbackQuery(/^category:open:([^:]+)$/, async (ctx) => { await answerCallback(ctx); await openCategory(ctx, ctx.match[1]); });
 composer.callbackQuery(/^category:(?:list|page):([^:]+):(\d+)$/, async (ctx) => {
   await answerCallback(ctx);
   const categoryId = ctx.match[1]; const page = Number(ctx.match[2]);

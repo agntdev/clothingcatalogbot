@@ -1,9 +1,19 @@
 [
   {
-    "name": "admin button is protected when owner access is not configured",
+    "name": "catalog management is protected when owner access is not configured",
     "steps": [
       {
         "send": { "callback": "admin:open" },
+        "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
+      }
+    ]
+  }
+  ,
+  {
+    "name": "add category is protected when owner access is not configured",
+    "steps": [
+      {
+        "send": { "callback": "admin:category:add" },
         "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
       }
     ]

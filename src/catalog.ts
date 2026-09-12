@@ -5,7 +5,15 @@ export type CategoryId = string;
 export interface Category {
   id: string;
   title: string;
+  /** Kept as `order` for compatibility with the existing catalogue seed. */
   order?: number;
+  position?: number;
+  parent_id?: string | null;
+  slug?: string;
+  description?: string;
+  image_file_id?: string;
+  created_by_admin_id?: number;
+  created_at?: number;
 }
 
 export interface Product {
@@ -98,10 +106,11 @@ export async function markCategoryReviewReported(ctx: Ctx): Promise<void> {
   await request(ctx, "/catalog/category-review-report", { method: "PUT" });
 }
 
-export async function categoriesFor(ctx: Ctx): Promise<Category[]> {
+export async function categoriesFor(ctx: Ctx, parentId?: string | null): Promise<Category[]> {
   await migrateCatalog(ctx);
-  const stored = await request<Category[]>(ctx, "/catalog/categories");
-  return stored ?? [...categories];
+  const suffix = parentId === undefined ? "" : `?parent=${encodeURIComponent(parentId ?? "")}`;
+  const stored = await request<Category[]>(ctx, `/catalog/categories${suffix}`);
+  return stored ?? (parentId === undefined || parentId === null ? [...categories] : []);
 }
 
 export async function categoryById(ctx: Ctx, id: string): Promise<Category | undefined> {

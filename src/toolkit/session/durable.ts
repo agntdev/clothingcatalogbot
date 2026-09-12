@@ -47,8 +47,21 @@ export interface WorkerEnv {
   BOT_OWNER_ID?: string;
 }
 
+interface CatalogCategory {
+  id: string;
+  title: string;
+  order?: number;
+  position?: number;
+  parent_id?: string | null;
+  slug?: string;
+  description?: string;
+  image_file_id?: string;
+  created_by_admin_id?: number;
+  created_at?: number;
+}
+
 interface CatalogState {
-  categories: Record<string, { id: string; title: string; order?: number }>;
+  categories: Record<string, CatalogCategory>;
   categoryIdsByParent?: Record<string, string[]>;
   products: Record<string, unknown>;
   categoryProductIds: Record<string, string[]>;
@@ -153,8 +166,9 @@ export class CatalogDO {
     }
     if (request.method === "GET" && path === "/categories") {
       const parent = url.searchParams.get("parent");
-      const ids = parent === null ? (data.categoryIdsByParent?.root ?? ["clothes", "shoes", "accessories"]) : [];
-      return Response.json(ids.map((id) => data.categories[id]).filter(Boolean).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+      const key = parent === null || parent === "" ? "root" : parent;
+      const ids = data.categoryIdsByParent?.[key] ?? [];
+      return Response.json(ids.map((id) => data.categories[id]).filter(Boolean).sort((a, b) => (a.position ?? a.order ?? 0) - (b.position ?? b.order ?? 0)));
     }
     if (request.method === "GET" && path === "/products") {
       const category = url.searchParams.get("category") ?? "";
@@ -167,19 +181,36 @@ export class CatalogDO {
       return Response.json((data.inquiryIds ?? []).slice(-50).reverse().map((id) => data.inquiries[id]).filter(Boolean));
     }
     if (request.method === "PUT" && path === "/category") {
-      const category = await request.json() as { id: string; title: string; order?: number };
-      const existing = data.categories[category.id];
+      const category = await request.json() as CatalogCategory;
+      if (!category.id || !category.title?.trim() || category.title.trim().length > 100 || (category.description?.length ?? 0) > 2000) return new Response("invalid category", { status: 400 });
       data.categoryIdsByParent ??= { root: ["clothes", "shoes", "accessories"] };
+      const parentKey = category.parent_id ?? "root";
+      const index = data.categoryIdsByParent[parentKey] ?? [];
+      const duplicate = index.map((id) => data.categories[id]).find((item) => item && item.id !== category.id && item.title.trim().toLocaleLowerCase("ru-RU") === category.title.trim().toLocaleLowerCase("ru-RU"));
+      if (duplicate) return new Response("duplicate category", { status: 409 });
+      const oldParentKey = data.categories[category.id]?.parent_id ?? "root";
+      if (oldParentKey !== parentKey) data.categoryIdsByParent[oldParentKey] = (data.categoryIdsByParent[oldParentKey] ?? []).filter((id) => id !== category.id);
+      category.title = category.title.trim();
+      category.parent_id = category.parent_id ?? null;
+      const baseSlug = (category.slug ?? category.title.toLocaleLowerCase("ru-RU"))
+        .replace(/[^a-zа-яё0-9]+/gi, "-").replace(/^-|-$/g, "") || "section";
+      const siblingSlugs = new Set(index.filter((id) => id !== category.id).map((id) => data.categories[id]?.slug).filter((slug): slug is string => Boolean(slug)));
+      let slug = baseSlug;
+      let suffix = 2;
+      while (siblingSlugs.has(slug)) slug = `${baseSlug}-${suffix++}`;
+      category.slug = slug;
+      category.position ??= index.length + 1;
       data.categories[category.id] = category;
-      const index = data.categoryIdsByParent.root ?? [];
       if (!index.includes(category.id)) index.push(category.id);
-      data.categoryIdsByParent.root = index;
+      data.categoryIdsByParent[parentKey] = index;
     } else if (request.method === "DELETE" && path === "/category") {
       const id = url.searchParams.get("id") ?? "";
       const category = data.categories[id];
       if (!category || ["clothes", "shoes", "accessories"].includes(id) || (data.categoryProductIds[id]?.length ?? 0) > 0) return new Response("cannot delete", { status: 409 });
       data.categoryIdsByParent ??= { root: ["clothes", "shoes", "accessories"] };
-      data.categoryIdsByParent.root = (data.categoryIdsByParent.root ?? []).filter((categoryId) => categoryId !== id);
+      const parentKey = category.parent_id ?? "root";
+      if ((data.categoryIdsByParent[id]?.length ?? 0) > 0) return new Response("has children", { status: 409 });
+      data.categoryIdsByParent[parentKey] = (data.categoryIdsByParent[parentKey] ?? []).filter((categoryId) => categoryId !== id);
       delete data.categories[id];
     } else if (request.method === "PUT" && path === "/product") {
       const product = await request.json() as { id: string; category_id: string };
