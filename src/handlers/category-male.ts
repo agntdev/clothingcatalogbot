@@ -9,6 +9,7 @@ const composer = new Composer<Ctx>();
 const PAGE_SIZE = 8;
 
 function backRow() { return [inlineButton("Назад", "catalog:back")]; }
+function mainMenuRow() { return [inlineButton("Главное меню", "menu:main")]; }
 
 export async function renderSection(ctx: Ctx, categoryId: string): Promise<void> {
   const [category, children] = await Promise.all([categoryById(ctx, categoryId), categoriesFor(ctx, categoryId)]);
@@ -16,6 +17,7 @@ export async function renderSection(ctx: Ctx, categoryId: string): Promise<void>
   const rows = children.map((child) => [inlineButton(child.title, `category:open:${child.id}`)]);
   rows.push([inlineButton("Все товары раздела", `category:list:${categoryId}:1`)]);
   rows.push(backRow());
+  rows.push(mainMenuRow());
   await replaceCallbackMessage(ctx, `Раздел «${title}». Выберите подраздел или откройте все товары.`, inlineKeyboard(rows));
 }
 
@@ -27,7 +29,7 @@ export async function renderList(ctx: Ctx, categoryId: string, wantedPage: numbe
   ctx.session.catalogCategory = categoryId;
   ctx.session.catalogPage = page;
   if (!products.length) {
-    await replaceCallbackMessage(ctx, wantedPage === page ? "В этой категории пока нет товаров" : "В этой категории пока нет товаров. Открыта первая страница.", inlineKeyboard([backRow()]));
+    await replaceCallbackMessage(ctx, wantedPage === page ? "В этой категории пока нет товаров" : "В этой категории пока нет товаров. Открыта первая страница.", inlineKeyboard([backRow(), mainMenuRow()]));
     return;
   }
   const rows = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((product) => [
@@ -38,6 +40,7 @@ export async function renderList(ctx: Ctx, categoryId: string, wantedPage: numbe
   if (page < pages) nav.push(inlineButton("Далее", `category:page:${categoryId}:${page + 1}`));
   if (nav.length) rows.push(nav);
   rows.push(backRow());
+  rows.push(mainMenuRow());
   await replaceCallbackMessage(ctx, `${title} — страница ${page} из ${pages}.${page !== wantedPage ? " Открыта ближайшая доступная страница." : ""}`, inlineKeyboard(rows));
 }
 

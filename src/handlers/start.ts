@@ -20,7 +20,15 @@ export function mainMenu(ctx: Ctx) {
   return inlineKeyboard(rows);
 }
 
-function clearPendingInquiry(ctx: Ctx) { ctx.session.inquiryProductId = undefined; ctx.session.inquiryStartedAt = undefined; }
+function clearPendingInquiry(ctx: Ctx) {
+  ctx.session.inquiryProductId = undefined;
+  ctx.session.inquiryStartedAt = undefined;
+  ctx.session.inquirySubmitting = undefined;
+  ctx.session.adminDraft = undefined;
+  ctx.session.adminStep = undefined;
+  ctx.session.adminCategoryParentId = undefined;
+  ctx.session.adminCategoryTargetId = undefined;
+}
 
 composer.command("start", async (ctx) => {
   clearPendingInquiry(ctx);

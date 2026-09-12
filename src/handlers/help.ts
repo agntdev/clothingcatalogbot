@@ -13,10 +13,10 @@ const HELP =
   "Нажмите «Меню» и выберите категорию.\n\n" +
   "В карточке товара нажмите «Задать вопрос», чтобы связаться с продавцом.";
 
-const backToMenu = inlineKeyboard([[inlineButton("В главное меню", "menu:main")]]);
+const backToMenu = inlineKeyboard([[inlineButton("Главное меню", "menu:main")]]);
 
 composer.command("help", async (ctx) => {
-  await ctx.reply(HELP);
+  await ctx.reply(HELP, { reply_markup: backToMenu });
 });
 
 composer.callbackQuery("menu:help", async (ctx) => {
