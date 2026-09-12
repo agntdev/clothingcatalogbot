@@ -9,6 +9,7 @@
               "method": "editMessageText",
               "payload": {
               "text": "Этот товар больше недоступен. Выберите другой товар в каталоге."
+              ,"reply_markup": { "inline_keyboard": [[{ "text": "Главное меню", "callback_data": "menu:main" }]] }
             }
           }
         ],
@@ -43,6 +44,19 @@
         "expect": [
           { "method": "answerCallbackQuery" },
           { "method": "editMessageCaption", "payload": { "caption": "Этот товар больше недоступен. Выберите другой товар в каталоге." } }
+        ]
+      }
+    ]
+  }
+  ,
+  {
+    "name": "main menu from a product card is updated in place",
+    "steps": [
+      {
+        "send": { "callback": "menu:main" },
+        "expect": [
+          { "method": "answerCallbackQuery" },
+          { "method": "editMessageText", "payload": { "text": "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом." } }
         ]
       }
     ]

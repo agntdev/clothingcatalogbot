@@ -55,7 +55,7 @@ async function notifyAdmin(ctx: Ctx, inquiry: Inquiry, product: Product): Promis
         });
       }
       await ctx.api.sendMessage(admin, text, {
-        reply_markup: inlineKeyboard([[urlButton("Ответить покупателю", `tg://user?id=${inquiry.user_id}`)]]),
+        reply_markup: inlineKeyboard([[urlButton("Ответить покупателю", `tg://user?id=${inquiry.user_id}`)], [inlineButton("Главное меню", "menu:main")]]),
       });
       await markInquirySent(ctx, inquiry.id, now());
       return true;
@@ -70,7 +70,7 @@ async function notifyAdmin(ctx: Ctx, inquiry: Inquiry, product: Product): Promis
 async function finishInquiry(ctx: Ctx, message: string) {
   const productId = ctx.session.inquiryProductId;
   if (ctx.session.inquirySubmitting) {
-    await ctx.reply("Заявка уже отправляется. Подождите немного.");
+    await ctx.reply("Заявка уже отправляется. Подождите немного.", { reply_markup: inlineKeyboard([[inlineButton("Главное меню", "menu:main")]]) });
     return;
   }
   ctx.session.inquirySubmitting = true;
@@ -80,7 +80,7 @@ async function finishInquiry(ctx: Ctx, message: string) {
     if (!productId) return;
     const product = await productById(ctx, productId);
     if (!product || !ctx.from) {
-      await ctx.reply("Этот товар больше недоступен. Выберите другой товар в каталоге.");
+      await ctx.reply("Этот товар больше недоступен. Выберите другой товар в каталоге.", { reply_markup: inlineKeyboard([[inlineButton("Главное меню", "menu:main")]]) });
       return;
     }
     const timestamp = now();
@@ -109,6 +109,7 @@ async function finishInquiry(ctx: Ctx, message: string) {
       delivered
         ? "Заявка принята. Продавец свяжется с вами."
         : "Ваша заявка сохранена, но администратор недоступен. Мы свяжемся с вами.",
+      { reply_markup: inlineKeyboard([[inlineButton("Главное меню", "menu:main")]]) },
     );
   } finally {
     ctx.session.inquirySubmitting = undefined;
@@ -119,7 +120,7 @@ composer.callbackQuery(/^inquiry:start:([^:]+)$/, async (ctx) => {
   await answerCallback(ctx);
   const product = await productById(ctx, ctx.match[1]);
   if (!product) {
-    await replaceCallbackMessage(ctx, "Этот товар больше недоступен. Выберите другой товар в каталоге.", inlineKeyboard([[inlineButton("В главное меню", "menu:main")]]));
+    await replaceCallbackMessage(ctx, "Этот товар больше недоступен. Выберите другой товар в каталоге.", inlineKeyboard([[inlineButton("Главное меню", "menu:main")]]));
     return;
   }
   ctx.session.inquiryProductId = product.id;
@@ -128,7 +129,7 @@ composer.callbackQuery(/^inquiry:start:([^:]+)$/, async (ctx) => {
     reply_markup: { force_reply: true, input_field_placeholder: "Ваш вопрос о товаре" },
   });
   await ctx.reply("Сообщение необязательно.", {
-    reply_markup: inlineKeyboard([[inlineButton("Отправить без сообщения", "inquiry:empty")], [inlineButton("Отмена", "inquiry:cancel")]]),
+    reply_markup: inlineKeyboard([[inlineButton("Отправить без сообщения", "inquiry:empty")], [inlineButton("Отмена", "inquiry:cancel")], [inlineButton("Главное меню", "menu:main")]]),
   });
 });
 
@@ -136,7 +137,7 @@ composer.callbackQuery(/^order:start:([^:]+)$/, async (ctx) => {
   await answerCallback(ctx);
   const product = await productById(ctx, ctx.match[1]);
   if (!product) {
-    await replaceCallbackMessage(ctx, "Этот товар больше недоступен. Выберите другой товар в каталоге.", inlineKeyboard([[inlineButton("В главное меню", "menu:main")]]));
+    await replaceCallbackMessage(ctx, "Этот товар больше недоступен. Выберите другой товар в каталоге.", inlineKeyboard([[inlineButton("Главное меню", "menu:main")]]));
     return;
   }
   ctx.session.inquiryProductId = product.id;
@@ -153,7 +154,7 @@ composer.callbackQuery("inquiry:cancel", async (ctx) => {
   await answerCallback(ctx);
   ctx.session.inquiryProductId = undefined;
   ctx.session.inquiryStartedAt = undefined;
-  await ctx.reply("Заявка отменена.");
+  await ctx.reply("Заявка отменена.", { reply_markup: inlineKeyboard([[inlineButton("Главное меню", "menu:main")]]) });
 });
 
 composer.on("message:text", async (ctx, next) => {
@@ -168,7 +169,7 @@ composer.on("message:text", async (ctx, next) => {
   if ((ctx.session.inquiryStartedAt ?? 0) + FLOW_TTL_MS < now()) {
     ctx.session.inquiryProductId = undefined;
     ctx.session.inquiryStartedAt = undefined;
-    await ctx.reply("Время для заявки истекло. Откройте товар и попробуйте ещё раз.");
+    await ctx.reply("Время для заявки истекло. Откройте товар и попробуйте ещё раз.", { reply_markup: inlineKeyboard([[inlineButton("Главное меню", "menu:main")]]) });
     return;
   }
   await finishInquiry(ctx, ctx.message.text);

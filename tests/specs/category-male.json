@@ -10,7 +10,7 @@
               "payload": {
               "text": "Раздел «Мужская». Выберите подраздел или откройте все товары.",
               "reply_markup": {
-                "inline_keyboard": [[{ "text": "Все товары раздела", "callback_data": "category:list:male:1" }], [{ "text": "Назад", "callback_data": "catalog:back" }]]
+                "inline_keyboard": [[{ "text": "Все товары раздела", "callback_data": "category:list:male:1" }], [{ "text": "Назад", "callback_data": "catalog:back" }], [{ "text": "Главное меню", "callback_data": "menu:main" }]]
               }
             }
           }
@@ -47,6 +47,25 @@
       },
       {
         "send": { "callback": "catalog:back" },
+        "expect": [
+          { "method": "answerCallbackQuery" },
+          { "method": "editMessageText", "payload": { "text": "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом." } }
+        ]
+      }
+    ]
+  }
+  ,
+  {
+    "name": "main menu is available from a subcategory list and replaces it in place",
+    "steps": [
+      {
+        "send": { "callback": "category:open:male" },
+        "expect": [
+          { "method": "editMessageText", "payload": { "reply_markup": { "inline_keyboard": [[{ "text": "Все товары раздела", "callback_data": "category:list:male:1" }], [{ "text": "Назад", "callback_data": "catalog:back" }], [{ "text": "Главное меню", "callback_data": "menu:main" }]] } } }
+        ]
+      },
+      {
+        "send": { "callback": "menu:main" },
         "expect": [
           { "method": "answerCallbackQuery" },
           { "method": "editMessageText", "payload": { "text": "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом." } }
