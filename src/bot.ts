@@ -9,10 +9,20 @@ export interface Session {
   inquiryProductId?: string;
   inquiryStartedAt?: number;
   inquirySubmitting?: boolean;
-  catalogCategory?: "male" | "female" | "kids" | "all";
+  catalogCategory?: string;
   catalogPage?: number;
+  catalogStack?: CatalogView[];
   adminDraft?: AdminProductDraft;
-  adminStep?: "category" | "photo" | "title" | "description" | "price" | "preview";
+  adminStep?: "category" | "photo" | "title" | "description" | "price" | "preview" | "section_name" | "section_rename";
+  adminCategoryParentId?: string;
+  adminCategoryTargetId?: string;
+}
+
+export interface CatalogView {
+  kind: "menu" | "section" | "list" | "product";
+  categoryId?: string;
+  page?: number;
+  productId?: string;
 }
 
 export interface AdminProductDraft {

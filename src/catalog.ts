@@ -1,6 +1,13 @@
 import type { Ctx } from "./bot.js";
 
-export type CategoryId = "male" | "female" | "kids" | "all";
+export type CategoryId = string;
+
+export interface Category {
+  id: string;
+  title: string;
+  parent_id?: string;
+  order?: number;
+}
 
 export interface Product {
   id: string;
@@ -8,7 +15,7 @@ export interface Product {
   category?: "Мужская" | "Женская" | "Детская";
   photo?: string;
   description?: string;
-  category_id: Exclude<CategoryId, "all">;
+  category_id: string;
   photo_file_id_or_url?: string;
   title: string;
   short_description: string;
@@ -33,7 +40,7 @@ export interface Inquiry {
 type CatalogStub = { fetch(input: string, init?: RequestInit): Promise<Response> };
 type CatalogEnv = { CHAT_DO?: { idFromName(name: string): unknown; get(id: unknown): CatalogStub } };
 
-const categories: ReadonlyArray<{ id: Exclude<CategoryId, "all">; title: string }> = [
+const categories: ReadonlyArray<Category> = [
   { id: "male", title: "Мужская" },
   { id: "female", title: "Женская" },
   { id: "kids", title: "Детская" },
@@ -69,6 +76,28 @@ async function request<T>(ctx: Ctx, path: string, init?: RequestInit): Promise<T
 
 export function categoryTitle(id: CategoryId): string {
   return id === "all" ? "Все товары" : categories.find((category) => category.id === id)?.title ?? "Каталог";
+}
+
+export async function categoriesFor(ctx: Ctx, parentId?: string): Promise<Category[]> {
+  const suffix = parentId === undefined ? "" : `?parent=${encodeURIComponent(parentId)}`;
+  const stored = await request<Category[]>(ctx, `/catalog/categories${suffix}`);
+  return stored ?? (parentId === undefined ? [...categories] : []);
+}
+
+export async function categoryById(ctx: Ctx, id: string): Promise<Category | undefined> {
+  return request<Category>(ctx, `/catalog/category?id=${encodeURIComponent(id)}`);
+}
+
+export async function saveCategory(ctx: Ctx, category: Category): Promise<boolean> {
+  return (await request<{ saved: boolean }>(ctx, "/catalog/category", {
+    method: "PUT", body: JSON.stringify(category),
+  }))?.saved === true;
+}
+
+export async function deleteCategory(ctx: Ctx, id: string): Promise<boolean> {
+  return (await request<{ saved: boolean }>(ctx, `/catalog/category?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  }))?.saved === true;
 }
 
 export async function productsFor(ctx: Ctx, category: CategoryId): Promise<Product[]> {

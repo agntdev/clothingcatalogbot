@@ -1,6 +1,6 @@
 [
   {
-    "name": "/start sends a persistent in-chat category menu",
+    "name": "/start opens the inline catalogue menu",
     "steps": [
       {
         "send": { "text": "/start" },
@@ -11,22 +11,11 @@
               "text": "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.",
               "reply_markup": {
                 "inline_keyboard": [
-                  [{ "text": "Мужская", "callback_data": "category:male" }],
-                  [{ "text": "Женская", "callback_data": "category:female" }],
-                  [{ "text": "Детская", "callback_data": "category:kids" }],
-                  [{ "text": "Browse All", "callback_data": "category:all" }]
+                  [{ "text": "Мужская", "callback_data": "category:open:male" }],
+                  [{ "text": "Женская", "callback_data": "category:open:female" }],
+                  [{ "text": "Детская", "callback_data": "category:open:kids" }],
+                  [{ "text": "Все товары", "callback_data": "category:list:all:1" }]
                 ]
-              }
-            }
-          },
-          {
-            "method": "sendMessage",
-            "payload": {
-              "text": "Каталог всегда можно открыть кнопкой «Меню».",
-              "reply_markup": {
-                "keyboard": [[{ "text": "Меню" }]],
-                "resize_keyboard": true,
-                "is_persistent": true
               }
             }
           }
@@ -42,17 +31,6 @@
         "expect": [
           { "method": "answerCallbackQuery" },
           { "method": "editMessageText", "payload": { "text": "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом." } }
-        ]
-      }
-    ]
-  },
-  {
-    "name": "persistent menu control reopens the category menu",
-    "steps": [
-      {
-        "send": { "text": "Меню" },
-        "expect": [
-          { "method": "sendMessage", "payload": { "text": "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом." } }
         ]
       }
     ]

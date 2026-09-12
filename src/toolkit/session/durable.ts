@@ -46,9 +46,11 @@ export interface WorkerEnv {
 }
 
 interface CatalogState {
-  categories: Record<string, { id: string; title: string }>;
+  categories: Record<string, { id: string; title: string; parent_id?: string; order?: number }>;
+  categoryIdsByParent?: Record<string, string[]>;
   products: Record<string, unknown>;
   categoryProductIds: Record<string, string[]>;
+  allProductIds?: string[];
   inquiries: Record<string, unknown>;
   inquiryIds: string[];
   users: Record<string, unknown>;
@@ -72,7 +74,8 @@ export class CatalogDO {
         female: { id: "female", title: "Женская" },
         kids: { id: "kids", title: "Детская" },
       },
-      products: {}, categoryProductIds: {}, inquiries: {}, inquiryIds: [], users: {}, auditIds: [], audit: {},
+      categoryIdsByParent: { root: ["male", "female", "kids"] },
+      products: {}, categoryProductIds: {}, allProductIds: [], inquiries: {}, inquiryIds: [], users: {}, auditIds: [], audit: {},
     };
   }
 
@@ -84,14 +87,44 @@ export class CatalogDO {
       const item = data.products[url.searchParams.get("id") ?? ""];
       return item ? Response.json(item) : new Response(null, { status: 404 });
     }
+    if (request.method === "GET" && path === "/category") {
+      const item = data.categories[url.searchParams.get("id") ?? ""];
+      return item ? Response.json(item) : new Response(null, { status: 404 });
+    }
+    if (request.method === "GET" && path === "/categories") {
+      const parent = url.searchParams.get("parent");
+      const ids = parent === null
+        ? (data.categoryIdsByParent?.root ?? ["male", "female", "kids"])
+        : (data.categoryIdsByParent?.[parent] ?? []);
+      return Response.json(ids.map((id) => data.categories[id]).filter(Boolean));
+    }
     if (request.method === "GET" && path === "/products") {
       const category = url.searchParams.get("category") ?? "";
       const ids = category === "all"
-        ? ["male", "female", "kids"].flatMap((id) => data.categoryProductIds[id] ?? [])
+        ? (data.allProductIds ?? ["male", "female", "kids"].flatMap((id) => data.categoryProductIds[id] ?? []))
         : data.categoryProductIds[category] ?? [];
       return Response.json(ids.map((id) => data.products[id]).filter(Boolean));
     }
-    if (request.method === "PUT" && path === "/product") {
+    if (request.method === "PUT" && path === "/category") {
+      const category = await request.json() as { id: string; title: string; parent_id?: string; order?: number };
+      const existing = data.categories[category.id];
+      const oldParent = existing?.parent_id ?? "root";
+      const newParent = category.parent_id ?? "root";
+      data.categoryIdsByParent ??= { root: ["male", "female", "kids"] };
+      if (oldParent !== newParent) data.categoryIdsByParent[oldParent] = (data.categoryIdsByParent[oldParent] ?? []).filter((id) => id !== category.id);
+      data.categories[category.id] = category;
+      const index = data.categoryIdsByParent[newParent] ?? [];
+      if (!index.includes(category.id)) index.push(category.id);
+      data.categoryIdsByParent[newParent] = index;
+    } else if (request.method === "DELETE" && path === "/category") {
+      const id = url.searchParams.get("id") ?? "";
+      const category = data.categories[id];
+      if (!category || id === "male" || id === "female" || id === "kids" || (data.categoryIdsByParent?.[id]?.length ?? 0) > 0 || (data.categoryProductIds[id]?.length ?? 0) > 0) return new Response("cannot delete", { status: 409 });
+      const parent = category.parent_id ?? "root";
+      data.categoryIdsByParent ??= { root: ["male", "female", "kids"] };
+      data.categoryIdsByParent[parent] = (data.categoryIdsByParent[parent] ?? []).filter((categoryId) => categoryId !== id);
+      delete data.categories[id];
+    } else if (request.method === "PUT" && path === "/product") {
       const product = await request.json() as { id: string; category_id: string };
       const existing = data.products[product.id] as { category_id?: string } | undefined;
       if (existing?.category_id && existing.category_id !== product.category_id) {
@@ -101,11 +134,14 @@ export class CatalogDO {
       const index = data.categoryProductIds[product.category_id] ?? [];
       if (!index.includes(product.id)) index.push(product.id);
       data.categoryProductIds[product.category_id] = index;
+      data.allProductIds ??= [];
+      if (!data.allProductIds.includes(product.id)) data.allProductIds.push(product.id);
     } else if (request.method === "DELETE" && path === "/product") {
       const id = url.searchParams.get("id") ?? "";
       const existing = data.products[id] as { category_id?: string } | undefined;
       if (existing?.category_id) data.categoryProductIds[existing.category_id] = (data.categoryProductIds[existing.category_id] ?? []).filter((productId) => productId !== id);
       delete data.products[id];
+      data.allProductIds = (data.allProductIds ?? []).filter((productId) => productId !== id);
     } else if (request.method === "PUT" && path === "/user") {
       const user = await request.json() as { user_id: number };
       data.users[String(user.user_id)] = user;

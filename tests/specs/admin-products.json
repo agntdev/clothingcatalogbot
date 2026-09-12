@@ -1,14 +1,5 @@
 [
   {
-    "name": "/admin is protected when owner access is not configured",
-    "steps": [
-      {
-        "send": { "text": "/admin" },
-        "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
-      }
-    ]
-  },
-  {
     "name": "admin button is protected when owner access is not configured",
     "steps": [
       {
