@@ -22,8 +22,9 @@ export async function renderList(ctx: Ctx, categoryId: string, wantedPage: numbe
     await replaceCallbackMessage(ctx, wantedPage === page ? "В этой категории пока нет товаров" : "В этой категории пока нет товаров. Открыта первая страница.", inlineKeyboard([backRow(), mainMenuRow()]));
     return;
   }
-  const rows = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((product) => [
-    inlineButton(`${product.title} — ${formatPrice(product)}`, `product:view:${product.id}`),
+  const rows = products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).flatMap((product) => [
+    [inlineButton(`${product.title} — ${formatPrice(product)}`, `product:view:${product.id}`)],
+    [inlineButton("Добавить в корзину", `cart:add:${product.id}`)],
   ]);
   const nav = [];
   if (page > 1) nav.push(inlineButton("Предыдущая", `category:page:${categoryId}:${page - 1}`));
@@ -39,6 +40,7 @@ export async function renderView(ctx: Ctx, view: CatalogView): Promise<void> {
     const roots = await categoriesFor(ctx, null);
     const rows = roots.map((category) => [inlineButton(category.title.slice(0, 60), `category:open:${category.id}`)]);
     rows.push([inlineButton("Все товары", "category:list:all:1")]);
+    rows.push([inlineButton("Корзина", "cart:open")]);
     if (isOwner(ctx)) rows.push([inlineButton("Управление каталогом", "admin:open")]);
     await replaceCallbackMessage(ctx, "Выберите категорию. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.", inlineKeyboard(rows));
   } else if (view.kind === "list" && view.categoryId) await renderList(ctx, view.categoryId, view.page ?? 1);

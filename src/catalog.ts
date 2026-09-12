@@ -53,7 +53,24 @@ export interface Inquiry {
   sent_to_admin_at?: number;
   product_snapshot?: { title: string; price_minor_units: number; photo_file_id_or_url?: string; photo_url?: string };
   username?: string;
+  kind?: "product" | "cart";
+  cart_snapshot?: CartItem[];
+  total_minor_units?: number;
+  status?: "new" | "processed";
 }
+
+export interface CartItem {
+  id: string;
+  cart_user_id: number;
+  product_id: string;
+  title_snapshot: string;
+  price_snapshot_rub: number;
+  qty: number;
+  thumbnail_url?: string;
+}
+
+export interface Cart { user_id: number; updated_at: number; items: CartItem[]; }
+export interface Comment { id: string; product_id: string; user_id: number; user_display_name: string; text: string; created_at: number; }
 
 type CatalogStub = { fetch(input: string, init?: RequestInit): Promise<Response> };
 type CatalogEnv = { CHAT_DO?: { idFromName(name: string): unknown; get(id: unknown): CatalogStub } };
@@ -186,6 +203,37 @@ export async function markInquirySent(ctx: Ctx, id: string, sentAt: number): Pro
     body: JSON.stringify({ id, sent_at: sentAt }),
   });
 }
+
+export async function markInquiryProcessed(ctx: Ctx, id: string): Promise<boolean> {
+  return (await request<{ saved: boolean }>(ctx, "/catalog/inquiry/processed", { method: "PUT", body: JSON.stringify({ id }) }))?.saved === true;
+}
+
+export async function cartFor(ctx: Ctx, userId: number): Promise<Cart | undefined> {
+  return request<Cart>(ctx, `/catalog/cart?user_id=${encodeURIComponent(String(userId))}`);
+}
+export async function addCartItem(ctx: Ctx, product: Product, userId: number, timestamp: number): Promise<Cart | undefined> {
+  return request<Cart>(ctx, "/catalog/cart/add", { method: "PUT", body: JSON.stringify({ user_id: userId, product_id: product.id, title_snapshot: product.title, price_snapshot_rub: product.price_minor_units, thumbnail_url: productPhotos(product)[0], updated_at: timestamp }) });
+}
+export async function changeCartItem(ctx: Ctx, userId: number, itemId: string, delta: number, timestamp: number): Promise<Cart | undefined> {
+  return request<Cart>(ctx, "/catalog/cart/item", { method: "PUT", body: JSON.stringify({ user_id: userId, item_id: itemId, delta, updated_at: timestamp }) });
+}
+export async function removeCartItem(ctx: Ctx, userId: number, itemId: string, timestamp: number): Promise<Cart | undefined> {
+  return request<Cart>(ctx, `/catalog/cart/item?user_id=${encodeURIComponent(String(userId))}&item_id=${encodeURIComponent(itemId)}&updated_at=${timestamp}`, { method: "DELETE" });
+}
+export async function clearCart(ctx: Ctx, userId: number, timestamp: number): Promise<boolean> {
+  return (await request<{ saved: boolean }>(ctx, "/catalog/cart/clear", { method: "PUT", body: JSON.stringify({ user_id: userId, updated_at: timestamp }) }))?.saved === true;
+}
+export async function clearCartForOwner(ctx: Ctx, userId: number, timestamp: number): Promise<boolean> {
+  return (await request<{ saved: boolean }>(ctx, "/catalog/cart/admin-clear", { method: "PUT", body: JSON.stringify({ user_id: userId, updated_at: timestamp }) }))?.saved === true;
+}
+export async function commentsFor(ctx: Ctx, productId: string, page = 1): Promise<{ items: Comment[]; pages: number; page: number }> {
+  return (await request<{ items: Comment[]; pages: number; page: number }>(ctx, `/catalog/comments?product_id=${encodeURIComponent(productId)}&page=${page}`)) ?? { items: [], pages: 1, page: 1 };
+}
+export async function saveComment(ctx: Ctx, comment: Comment): Promise<boolean> {
+  return (await request<{ saved: boolean }>(ctx, "/catalog/comment", { method: "PUT", body: JSON.stringify(comment) }))?.saved === true;
+}
+export async function recentCommentsForOwner(ctx: Ctx): Promise<Comment[]> { return (await request<Comment[]>(ctx, "/catalog/comments/recent")) ?? []; }
+export async function deleteComment(ctx: Ctx, id: string): Promise<boolean> { return (await request<{ saved: boolean }>(ctx, `/catalog/comment?id=${encodeURIComponent(id)}`, { method: "DELETE" }))?.saved === true; }
 
 /** Owner-only inbox is read through the durable inquiry index, never a key scan. */
 export async function inquiriesForOwner(ctx: Ctx): Promise<Inquiry[]> {

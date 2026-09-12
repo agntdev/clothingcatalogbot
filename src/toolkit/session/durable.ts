@@ -78,6 +78,13 @@ interface CatalogState {
   categoryMigrationVersion?: number;
   categoryReviewReportPending?: boolean;
   categoryReviewProductIds?: string[];
+  /** Schema v3: user-owned carts and explicit item indices. */
+  carts?: Record<string, { user_id: number; updated_at: number }>;
+  cartItems?: Record<string, { id: string; cart_user_id: number; product_id: string; title_snapshot: string; price_snapshot_rub: number; qty: number; thumbnail_url?: string }>;
+  cartItemIdsByUser?: Record<string, string[]>;
+  comments?: Record<string, { id: string; product_id: string; user_id: number; user_display_name: string; text: string; created_at: number }>;
+  commentIdsByProduct?: Record<string, string[]>;
+  commentIds?: string[];
 }
 
 /**
@@ -114,10 +121,26 @@ export class CatalogDO {
     return [];
   }
 
+  private migrateCartAndComments(data: CatalogState): void {
+    data.carts ??= {};
+    data.cartItems ??= {};
+    data.cartItemIdsByUser ??= {};
+    data.comments ??= {};
+    data.commentIdsByProduct ??= {};
+    data.commentIds ??= [];
+  }
+
+  private cart(data: CatalogState, userId: number) {
+    this.migrateCartAndComments(data);
+    const key = String(userId);
+    return { user_id: userId, updated_at: data.carts![key]?.updated_at ?? 0, items: (data.cartItemIdsByUser![key] ?? []).map((id) => data.cartItems![id]).filter(Boolean) };
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\/catalog/, "");
     const data = await this.data();
+    this.migrateCartAndComments(data);
     if (request.method === "POST" && path === "/migrate") {
       const flagged = this.migrateCategories(data);
       await this.state.storage.put("catalog", data);
@@ -157,6 +180,22 @@ export class CatalogDO {
     if (request.method === "GET" && path === "/inquiries") {
       if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
       return Response.json((data.inquiryIds ?? []).slice(-50).reverse().map((id) => data.inquiries[id]).filter(Boolean));
+    }
+    if (request.method === "GET" && path === "/cart") {
+      const userId = Number(url.searchParams.get("user_id"));
+      if (!Number.isSafeInteger(userId) || String(userId) !== request.headers.get("x-agntdev-actor-id")) return new Response("forbidden", { status: 403 });
+      return Response.json(this.cart(data, userId));
+    }
+    if (request.method === "GET" && path === "/comments") {
+      const productId = url.searchParams.get("product_id") ?? "";
+      const all = (data.commentIdsByProduct![productId] ?? []).map((id) => data.comments![id]).filter(Boolean).sort((a, b) => b.created_at - a.created_at);
+      const pages = Math.max(1, Math.ceil(all.length / 5));
+      const page = Math.max(1, Math.min(Number(url.searchParams.get("page")) || 1, pages));
+      return Response.json({ items: all.slice((page - 1) * 5, page * 5), pages, page });
+    }
+    if (request.method === "GET" && path === "/comments/recent") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
+      return Response.json((data.commentIds ?? []).slice(-50).reverse().map((id) => data.comments![id]).filter(Boolean));
     }
     if (request.method === "PUT" && path === "/category") {
       if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
@@ -226,6 +265,52 @@ export class CatalogDO {
       const update = await request.json() as { id: string; sent_at: number };
       const inquiry = data.inquiries[update.id] as Record<string, unknown> | undefined;
       if (inquiry) inquiry.sent_to_admin_at = update.sent_at;
+    } else if (request.method === "PUT" && path === "/inquiry/processed") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
+      const update = await request.json() as { id: string };
+      const inquiry = data.inquiries[update.id] as Record<string, unknown> | undefined;
+      if (!inquiry) return new Response("not found", { status: 404 });
+      inquiry.status = "processed";
+    } else if (request.method === "PUT" && path === "/cart/add") {
+      const item = await request.json() as { user_id: number; product_id: string; title_snapshot: string; price_snapshot_rub: number; thumbnail_url?: string; updated_at: number };
+      if (!Number.isSafeInteger(item.user_id) || String(item.user_id) !== request.headers.get("x-agntdev-actor-id") || !data.products[item.product_id]) return new Response("invalid cart item", { status: 400 });
+      const product = data.products[item.product_id] as { visible?: boolean };
+      if (product.visible === false) return new Response("unavailable", { status: 409 });
+      const key = String(item.user_id); const ids = data.cartItemIdsByUser![key] ?? [];
+      const existing = ids.map((id) => data.cartItems![id]).find((x) => x?.product_id === item.product_id);
+      if (existing) existing.qty = Math.min(99, existing.qty + 1);
+      else { const id = crypto.randomUUID(); data.cartItems![id] = { id, cart_user_id: item.user_id, product_id: item.product_id, title_snapshot: item.title_snapshot, price_snapshot_rub: item.price_snapshot_rub, qty: 1, thumbnail_url: item.thumbnail_url }; ids.push(id); data.cartItemIdsByUser![key] = ids; }
+      data.carts![key] = { user_id: item.user_id, updated_at: item.updated_at };
+      await this.state.storage.put("catalog", data); return Response.json(this.cart(data, item.user_id));
+    } else if (request.method === "PUT" && path === "/cart/item") {
+      const update = await request.json() as { user_id: number; item_id: string; delta: number; updated_at: number };
+      if (!Number.isSafeInteger(update.user_id) || String(update.user_id) !== request.headers.get("x-agntdev-actor-id") || !Number.isInteger(update.delta)) return new Response("invalid", { status: 400 });
+      const item = data.cartItems![update.item_id]; if (!item || item.cart_user_id !== update.user_id) return new Response("not found", { status: 404 });
+      item.qty = Math.max(1, Math.min(99, item.qty + update.delta)); data.carts![String(update.user_id)] = { user_id: update.user_id, updated_at: update.updated_at };
+      await this.state.storage.put("catalog", data); return Response.json(this.cart(data, update.user_id));
+    } else if (request.method === "DELETE" && path === "/cart/item") {
+      const userId = Number(url.searchParams.get("user_id")); const itemId = url.searchParams.get("item_id") ?? "";
+      const item = data.cartItems![itemId]; if (!Number.isSafeInteger(userId) || String(userId) !== request.headers.get("x-agntdev-actor-id") || !item || item.cart_user_id !== userId) return new Response("not found", { status: 404 });
+      delete data.cartItems![itemId]; data.cartItemIdsByUser![String(userId)] = (data.cartItemIdsByUser![String(userId)] ?? []).filter((id) => id !== itemId); data.carts![String(userId)] = { user_id: userId, updated_at: Number(url.searchParams.get("updated_at")) || 0 };
+    } else if (request.method === "PUT" && path === "/cart/clear") {
+      const update = await request.json() as { user_id: number; updated_at: number };
+      if (!Number.isSafeInteger(update.user_id) || String(update.user_id) !== request.headers.get("x-agntdev-actor-id")) return new Response("forbidden", { status: 403 });
+      for (const id of data.cartItemIdsByUser![String(update.user_id)] ?? []) delete data.cartItems![id];
+      data.cartItemIdsByUser![String(update.user_id)] = []; data.carts![String(update.user_id)] = { user_id: update.user_id, updated_at: update.updated_at };
+    } else if (request.method === "PUT" && path === "/cart/admin-clear") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
+      const update = await request.json() as { user_id: number; updated_at: number };
+      if (!Number.isSafeInteger(update.user_id)) return new Response("invalid", { status: 400 });
+      for (const id of data.cartItemIdsByUser![String(update.user_id)] ?? []) delete data.cartItems![id];
+      data.cartItemIdsByUser![String(update.user_id)] = []; data.carts![String(update.user_id)] = { user_id: update.user_id, updated_at: update.updated_at };
+    } else if (request.method === "PUT" && path === "/comment") {
+      const comment = await request.json() as { id: string; product_id: string; user_id: number; user_display_name: string; text: string; created_at: number };
+      if (!comment.id || !data.products[comment.product_id] || !Number.isSafeInteger(comment.user_id) || String(comment.user_id) !== request.headers.get("x-agntdev-actor-id") || !comment.text.trim() || comment.text.length > 1000) return new Response("invalid comment", { status: 400 });
+      comment.text = comment.text.trim(); data.comments![comment.id] = comment; const ids = data.commentIdsByProduct![comment.product_id] ?? []; if (!ids.includes(comment.id)) ids.push(comment.id); data.commentIdsByProduct![comment.product_id] = ids; if (!data.commentIds!.includes(comment.id)) data.commentIds!.push(comment.id);
+    } else if (request.method === "DELETE" && path === "/comment") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
+      const id = url.searchParams.get("id") ?? ""; const comment = data.comments![id]; if (!comment) return new Response("not found", { status: 404 });
+      delete data.comments![id]; data.commentIdsByProduct![comment.product_id] = (data.commentIdsByProduct![comment.product_id] ?? []).filter((x) => x !== id); data.commentIds = data.commentIds!.filter((x) => x !== id);
     } else if (request.method === "PUT" && path === "/audit") {
       const action = await request.json() as { admin_id: number; action: string; product_id: string; timestamp: number };
       const isDeniedAttempt = action.action === "admin_access_denied";
