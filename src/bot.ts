@@ -13,9 +13,11 @@ export interface Session {
   catalogPage?: number;
   catalogStack?: CatalogView[];
   adminDraft?: AdminProductDraft;
-  adminStep?: "category" | "photo" | "title" | "description" | "price" | "preview" | "section_name" | "section_rename";
+  adminStep?: "category" | "photo" | "title" | "description" | "price" | "preview" | "section_name" | "section_description" | "section_photo" | "section_preview" | "section_rename";
   adminCategoryParentId?: string;
   adminCategoryTargetId?: string;
+  adminCategoryDraft?: AdminCategoryDraft;
+  adminCategoryPage?: number;
 }
 
 export interface CatalogView {
@@ -26,11 +28,18 @@ export interface CatalogView {
 }
 
 export interface AdminProductDraft {
-  category_id: "clothes" | "shoes" | "accessories";
+  category_id: string;
   photo_file_id_or_url?: string;
   title?: string;
   short_description?: string;
   price_minor_units?: number;
+}
+
+export interface AdminCategoryDraft {
+  parent_id?: string;
+  title?: string;
+  description?: string;
+  image_file_id?: string;
 }
 
 export type Ctx = BotContext<Session>;

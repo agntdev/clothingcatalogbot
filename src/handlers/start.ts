@@ -2,20 +2,17 @@ import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
 import { adminChatId, inlineButton, inlineKeyboard, isOwner } from "../toolkit/index.js";
 import { now } from "../clock.js";
-import { categoryReviewReport, markCategoryReviewReported, migrateCatalog, saveUser, type Product } from "../catalog.js";
+import { categoriesFor, categoryReviewReport, markCategoryReviewReported, migrateCatalog, saveUser, type Product } from "../catalog.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 import { resetNavigation } from "../navigation.js";
 
 const composer = new Composer<Ctx>();
 export const MENU_TEXT = "Выберите категорию. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.";
 
-export function mainMenu(ctx: Ctx) {
-  const rows = [
-    [inlineButton("Одежда", "category:clothes")],
-    [inlineButton("Обувь", "category:shoes")],
-    [inlineButton("Аксессуары", "category:accessories")],
-    [inlineButton("Все товары", "category:list:all:1")],
-  ];
+export async function mainMenu(ctx: Ctx) {
+  const roots = await categoriesFor(ctx, null);
+  const rows = roots.map((category) => [inlineButton(category.title.slice(0, 60), `category:open:${category.id}`)]);
+  rows.push([inlineButton("Все товары", "category:list:all:1")]);
   if (isOwner(ctx)) rows.push([inlineButton("Управление каталогом", "admin:open")]);
   return inlineKeyboard(rows);
 }
@@ -54,7 +51,7 @@ composer.command("start", async (ctx) => {
   resetNavigation(ctx);
   const migrated = await migrateCatalog(ctx);
   await saveUser(ctx, now());
-  await ctx.reply(MENU_TEXT, { reply_markup: mainMenu(ctx) });
+  await ctx.reply(MENU_TEXT, { reply_markup: await mainMenu(ctx) });
   await sendMigrationReport(ctx, migrated);
 });
 
@@ -62,7 +59,7 @@ composer.callbackQuery("menu:main", async (ctx) => {
   await answerCallback(ctx);
   clearPendingInquiry(ctx);
   resetNavigation(ctx);
-  await replaceCallbackMessage(ctx, MENU_TEXT, mainMenu(ctx));
+  await replaceCallbackMessage(ctx, MENU_TEXT, await mainMenu(ctx));
 });
 
 export default composer;
