@@ -44,6 +44,7 @@ export interface WorkerEnv {
   BOT_TELEMETRY_SECRET?: string;
   BOT_TELEMETRY_SALT?: string;
   ADMIN_CHAT_ID?: string;
+  ADMIN_TELEGRAM_ID?: string;
   OWNER_ID?: string;
   BOT_OWNER_ID?: string;
 }
@@ -97,9 +98,7 @@ export class CatalogDO {
   constructor(private readonly state: DOState, private readonly env: WorkerEnv) {}
 
   private isOwnerRequest(request: Request): boolean {
-    // OWNER_ID is the access-control setting; ADMIN_CHAT_ID remains a backwards
-    // compatible owner identity for existing deployments.
-    const owner = this.env.OWNER_ID ?? this.env.ADMIN_CHAT_ID ?? this.env.BOT_OWNER_ID;
+    const owner = this.env.ADMIN_TELEGRAM_ID ?? this.env.ADMIN_CHAT_ID;
     return Boolean(owner && request.headers.get("x-agntdev-actor-id") === String(owner));
   }
 

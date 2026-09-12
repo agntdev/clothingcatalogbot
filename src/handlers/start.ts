@@ -14,7 +14,7 @@ export async function mainMenu(ctx: Ctx) {
   const rows = roots.map((category) => [inlineButton(category.title.slice(0, 60), `category:open:${category.id}`)]);
   rows.push([inlineButton("Все товары", "category:list:all:1")]);
   rows.push([inlineButton("Корзина", "cart:open")]);
-  if (isOwner(ctx)) rows.push([inlineButton("Управление каталогом", "admin:open")]);
+  if (isOwner(ctx)) rows.push([inlineButton("⚙️ Админ-панель", "admin:open")]);
   return inlineKeyboard(rows);
 }
 
