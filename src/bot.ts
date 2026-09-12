@@ -26,7 +26,7 @@ export interface CatalogView {
 }
 
 export interface AdminProductDraft {
-  category_id: "male" | "female" | "kids";
+  category_id: "clothes" | "shoes" | "accessories";
   photo_file_id_or_url?: string;
   title?: string;
   short_description?: string;

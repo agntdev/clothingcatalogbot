@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { CatalogView, Ctx } from "../bot.js";
-import { categoriesFor, categoryById, categoryTitle, formatPrice, productsFor } from "../catalog.js";
+import { categoryById, categoryTitle, formatPrice, productsFor } from "../catalog.js";
 import { inlineButton, inlineKeyboard, isOwner } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 import { currentView, popView, pushView } from "../navigation.js";
@@ -10,16 +10,6 @@ const PAGE_SIZE = 8;
 
 function backRow() { return [inlineButton("Назад", "catalog:back")]; }
 function mainMenuRow() { return [inlineButton("Главное меню", "menu:main")]; }
-
-export async function renderSection(ctx: Ctx, categoryId: string): Promise<void> {
-  const [category, children] = await Promise.all([categoryById(ctx, categoryId), categoriesFor(ctx, categoryId)]);
-  const title = category?.title ?? categoryTitle(categoryId);
-  const rows = children.map((child) => [inlineButton(child.title, `category:open:${child.id}`)]);
-  rows.push([inlineButton("Все товары раздела", `category:list:${categoryId}:1`)]);
-  rows.push(backRow());
-  rows.push(mainMenuRow());
-  await replaceCallbackMessage(ctx, `Раздел «${title}». Выберите подраздел или откройте все товары.`, inlineKeyboard(rows));
-}
 
 export async function renderList(ctx: Ctx, categoryId: string, wantedPage: number): Promise<void> {
   const products = await productsFor(ctx, categoryId);
@@ -47,16 +37,14 @@ export async function renderList(ctx: Ctx, categoryId: string, wantedPage: numbe
 export async function renderView(ctx: Ctx, view: CatalogView): Promise<void> {
   if (view.kind === "menu") {
     const rows = [
-      [inlineButton("Мужская", "category:open:male")], [inlineButton("Женская", "category:open:female")], [inlineButton("Детская", "category:open:kids")], [inlineButton("Все товары", "category:list:all:1")],
+      [inlineButton("Одежда", "category:clothes")], [inlineButton("Обувь", "category:shoes")], [inlineButton("Аксессуары", "category:accessories")], [inlineButton("Все товары", "category:list:all:1")],
     ];
     if (isOwner(ctx)) rows.push([inlineButton("Управление каталогом", "admin:open")]);
-    await replaceCallbackMessage(ctx, "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.", inlineKeyboard(rows));
-  } else if (view.kind === "section" && view.categoryId) await renderSection(ctx, view.categoryId);
-  else if (view.kind === "list" && view.categoryId) await renderList(ctx, view.categoryId, view.page ?? 1);
+    await replaceCallbackMessage(ctx, "Выберите категорию. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.", inlineKeyboard(rows));
+  } else if (view.kind === "list" && view.categoryId) await renderList(ctx, view.categoryId, view.page ?? 1);
 }
 
-composer.callbackQuery(/^category:(male|female|kids)$/, async (ctx) => { await answerCallback(ctx); pushView(ctx, { kind: "section", categoryId: ctx.match[1] }); await renderSection(ctx, ctx.match[1]); });
-composer.callbackQuery(/^category:open:([^:]+)$/, async (ctx) => { await answerCallback(ctx); pushView(ctx, { kind: "section", categoryId: ctx.match[1] }); await renderSection(ctx, ctx.match[1]); });
+composer.callbackQuery(/^category:(clothes|shoes|accessories)$/, async (ctx) => { await answerCallback(ctx); pushView(ctx, { kind: "list", categoryId: ctx.match[1], page: 1 }); await renderList(ctx, ctx.match[1], 1); });
 composer.callbackQuery(/^category:(?:list|page):([^:]+):(\d+)$/, async (ctx) => {
   await answerCallback(ctx);
   const categoryId = ctx.match[1]; const page = Number(ctx.match[2]);

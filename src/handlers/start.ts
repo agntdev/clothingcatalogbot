@@ -1,23 +1,42 @@
 import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
-import { inlineButton, inlineKeyboard, isOwner } from "../toolkit/index.js";
+import { adminChatId, inlineButton, inlineKeyboard, isOwner } from "../toolkit/index.js";
 import { now } from "../clock.js";
-import { saveUser } from "../catalog.js";
+import { categoryReviewReport, markCategoryReviewReported, migrateCatalog, saveUser, type Product } from "../catalog.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 import { resetNavigation } from "../navigation.js";
 
 const composer = new Composer<Ctx>();
-export const MENU_TEXT = "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.";
+export const MENU_TEXT = "Выберите категорию. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.";
 
 export function mainMenu(ctx: Ctx) {
   const rows = [
-    [inlineButton("Мужская", "category:open:male")],
-    [inlineButton("Женская", "category:open:female")],
-    [inlineButton("Детская", "category:open:kids")],
+    [inlineButton("Одежда", "category:clothes")],
+    [inlineButton("Обувь", "category:shoes")],
+    [inlineButton("Аксессуары", "category:accessories")],
     [inlineButton("Все товары", "category:list:all:1")],
   ];
   if (isOwner(ctx)) rows.push([inlineButton("Управление каталогом", "admin:open")]);
   return inlineKeyboard(rows);
+}
+
+async function sendMigrationReport(ctx: Ctx, products: Product[]): Promise<void> {
+  const admin = adminChatId(ctx as Ctx & { env?: Record<string, unknown> });
+  if (!admin || !/^-?\d+$/.test(admin)) return;
+  const pending = products.length ? products : await categoryReviewReport(ctx);
+  if (!pending.length) return;
+  try {
+    for (let offset = 0; offset < pending.length; offset += 40) {
+      const chunk = pending.slice(offset, offset + 40);
+      const heading = offset === 0 ? "Проверьте категории товаров после переноса:" : "Продолжение списка товаров для проверки:";
+      await ctx.api.sendMessage(admin, `${heading}\n${chunk.map((product) => `• ${product.title}`).join("\n")}`.slice(0, 3500), {
+        reply_markup: inlineKeyboard(chunk.map((product) => [inlineButton(`Проверить: ${product.title}`.slice(0, 60), `admin:product:open:${product.id}`)])),
+      });
+    }
+    await markCategoryReviewReported(ctx);
+  } catch {
+    // The durable pending marker keeps the report available for a later /start.
+  }
 }
 
 function clearPendingInquiry(ctx: Ctx) {
@@ -33,8 +52,10 @@ function clearPendingInquiry(ctx: Ctx) {
 composer.command("start", async (ctx) => {
   clearPendingInquiry(ctx);
   resetNavigation(ctx);
+  const migrated = await migrateCatalog(ctx);
   await saveUser(ctx, now());
   await ctx.reply(MENU_TEXT, { reply_markup: mainMenu(ctx) });
+  await sendMigrationReport(ctx, migrated);
 });
 
 composer.callbackQuery("menu:main", async (ctx) => {

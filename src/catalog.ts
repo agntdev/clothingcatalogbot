@@ -5,14 +5,13 @@ export type CategoryId = string;
 export interface Category {
   id: string;
   title: string;
-  parent_id?: string;
   order?: number;
 }
 
 export interface Product {
   id: string;
-  /** Owner-facing aliases retained with the catalogue's normalized fields. */
-  category?: "Мужская" | "Женская" | "Детская";
+  /** Main catalogue category after the one-time legacy migration. */
+  category?: "Одежда" | "Обувь" | "Аксессуары";
   photo?: string;
   description?: string;
   category_id: string;
@@ -24,6 +23,7 @@ export interface Product {
   created_by_admin_id?: number;
   created_at?: number;
   order?: number;
+  needs_category_review?: boolean;
 }
 
 export interface Inquiry {
@@ -42,9 +42,9 @@ type CatalogStub = { fetch(input: string, init?: RequestInit): Promise<Response>
 type CatalogEnv = { CHAT_DO?: { idFromName(name: string): unknown; get(id: unknown): CatalogStub } };
 
 const categories: ReadonlyArray<Category> = [
-  { id: "male", title: "Мужская" },
-  { id: "female", title: "Женская" },
-  { id: "kids", title: "Детская" },
+  { id: "clothes", title: "Одежда" },
+  { id: "shoes", title: "Обувь" },
+  { id: "accessories", title: "Аксессуары" },
 ];
 
 function stub(ctx: Ctx): CatalogStub | undefined {
@@ -79,10 +79,29 @@ export function categoryTitle(id: CategoryId): string {
   return id === "all" ? "Все товары" : categories.find((category) => category.id === id)?.title ?? "Каталог";
 }
 
-export async function categoriesFor(ctx: Ctx, parentId?: string): Promise<Category[]> {
-  const suffix = parentId === undefined ? "" : `?parent=${encodeURIComponent(parentId)}`;
-  const stored = await request<Category[]>(ctx, `/catalog/categories${suffix}`);
-  return stored ?? (parentId === undefined ? [...categories] : []);
+/**
+ * Converts the former nested catalogue to the three owner-requested roots.
+ * The Durable Object reads only its explicit all-product index and is therefore
+ * safe to call repeatedly from any entry point.
+ */
+export async function migrateCatalog(ctx: Ctx): Promise<Product[]> {
+  const result = await request<{ flagged?: Product[] }>(ctx, "/catalog/migrate", { method: "POST" });
+  return result?.flagged ?? [];
+}
+
+export async function categoryReviewReport(ctx: Ctx): Promise<Product[]> {
+  const result = await request<{ flagged?: Product[] }>(ctx, "/catalog/category-review-report");
+  return result?.flagged ?? [];
+}
+
+export async function markCategoryReviewReported(ctx: Ctx): Promise<void> {
+  await request(ctx, "/catalog/category-review-report", { method: "PUT" });
+}
+
+export async function categoriesFor(ctx: Ctx): Promise<Category[]> {
+  await migrateCatalog(ctx);
+  const stored = await request<Category[]>(ctx, "/catalog/categories");
+  return stored ?? [...categories];
 }
 
 export async function categoryById(ctx: Ctx, id: string): Promise<Category | undefined> {
@@ -102,6 +121,7 @@ export async function deleteCategory(ctx: Ctx, id: string): Promise<boolean> {
 }
 
 export async function productsFor(ctx: Ctx, category: CategoryId): Promise<Product[]> {
+  await migrateCatalog(ctx);
   const products = (await request<Product[]>(ctx, `/catalog/products?category=${encodeURIComponent(category)}`)) ?? [];
   return products.sort((a, b) => (a.order ?? a.created_at ?? 0) - (b.order ?? b.created_at ?? 0));
 }
