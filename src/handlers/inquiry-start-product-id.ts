@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
-import { formatPrice, markInquirySent, productById, saveInquiry, saveUser, type Inquiry, type Product } from "../catalog.js";
+import { formatPrice, markInquirySent, productById, productPhotos, saveInquiry, saveUser, type Inquiry, type Product } from "../catalog.js";
 import { now } from "../clock.js";
 import { adminChatId, inlineButton, inlineKeyboard, urlButton } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
@@ -49,8 +49,9 @@ async function notifyAdmin(ctx: Ctx, inquiry: Inquiry, product: Product): Promis
   ].join("\n");
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      if (product.photo_file_id_or_url) {
-        await ctx.api.sendPhoto(admin, product.photo_file_id_or_url, {
+      const primaryPhoto = productPhotos(product)[0];
+      if (primaryPhoto) {
+        await ctx.api.sendPhoto(admin, primaryPhoto, {
           caption: `${product.title}\n${product.price_minor_units / 100} ₽`,
         });
       }
@@ -95,8 +96,8 @@ async function finishInquiry(ctx: Ctx, message: string) {
       product_snapshot: {
         title: product.title,
         price_minor_units: product.price_minor_units,
-        photo_file_id_or_url: product.photo_file_id_or_url,
-        photo_url: product.photo_file_id_or_url,
+        photo_file_id_or_url: productPhotos(product)[0],
+        photo_url: productPhotos(product)[0],
       },
     };
     await saveUser(ctx, timestamp);

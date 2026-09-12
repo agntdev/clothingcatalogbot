@@ -71,7 +71,7 @@ async function openCategory(ctx: Ctx, categoryId: string): Promise<void> {
   await replaceCallbackMessage(ctx, text, keyboard);
 }
 
-composer.callbackQuery(/^category:(clothes|shoes|accessories)$/, async (ctx) => { await answerCallback(ctx); pushView(ctx, { kind: "list", categoryId: ctx.match[1], page: 1 }); await renderList(ctx, ctx.match[1], 1); });
+composer.callbackQuery(/^category:(male|female|kids|clothes|shoes|accessories)$/, async (ctx) => { await answerCallback(ctx); pushView(ctx, { kind: "list", categoryId: ctx.match[1], page: 1 }); await renderList(ctx, ctx.match[1], 1); });
 composer.callbackQuery(/^category:open:([^:]+)$/, async (ctx) => { await answerCallback(ctx); await openCategory(ctx, ctx.match[1]); });
 composer.callbackQuery(/^category:(?:list|page):([^:]+):(\d+)$/, async (ctx) => {
   await answerCallback(ctx);

@@ -14,6 +14,9 @@ export interface Category {
   image_file_id?: string;
   created_by_admin_id?: number;
   created_at?: number;
+  visible?: boolean;
+  updated_by_admin_id?: number;
+  updated_at?: number;
 }
 
 export interface Product {
@@ -32,6 +35,12 @@ export interface Product {
   created_at?: number;
   order?: number;
   needs_category_review?: boolean;
+  photos?: string[];
+  sku?: string;
+  visible?: boolean;
+  available?: boolean;
+  updated_by_admin_id?: number;
+  updated_at?: number;
 }
 
 export interface Inquiry {
@@ -50,9 +59,9 @@ type CatalogStub = { fetch(input: string, init?: RequestInit): Promise<Response>
 type CatalogEnv = { CHAT_DO?: { idFromName(name: string): unknown; get(id: unknown): CatalogStub } };
 
 const categories: ReadonlyArray<Category> = [
-  { id: "clothes", title: "Одежда" },
-  { id: "shoes", title: "Обувь" },
-  { id: "accessories", title: "Аксессуары" },
+  { id: "male", title: "Мужская", order: 1, visible: true },
+  { id: "female", title: "Женская", order: 2, visible: true },
+  { id: "kids", title: "Детская", order: 3, visible: true },
 ];
 
 function stub(ctx: Ctx): CatalogStub | undefined {
@@ -87,6 +96,10 @@ export function categoryTitle(id: CategoryId): string {
   return id === "all" ? "Все товары" : categories.find((category) => category.id === id)?.title ?? "Каталог";
 }
 
+export function productPhotos(product: Product): string[] {
+  return product.photos?.filter(Boolean) ?? (product.photo_file_id_or_url ? [product.photo_file_id_or_url] : []);
+}
+
 /**
  * Converts the former nested catalogue to the three owner-requested roots.
  * The Durable Object reads only its explicit all-product index and is therefore
@@ -106,11 +119,11 @@ export async function markCategoryReviewReported(ctx: Ctx): Promise<void> {
   await request(ctx, "/catalog/category-review-report", { method: "PUT" });
 }
 
-export async function categoriesFor(ctx: Ctx, parentId?: string | null): Promise<Category[]> {
+export async function categoriesFor(ctx: Ctx, parentId?: string | null, includeHidden = false): Promise<Category[]> {
   await migrateCatalog(ctx);
   const suffix = parentId === undefined ? "" : `?parent=${encodeURIComponent(parentId ?? "")}`;
   const stored = await request<Category[]>(ctx, `/catalog/categories${suffix}`);
-  return stored ?? (parentId === undefined || parentId === null ? [...categories] : []);
+  return (stored ?? (parentId === undefined || parentId === null ? [...categories] : [])).filter((category) => includeHidden || category.visible !== false);
 }
 
 export async function categoryById(ctx: Ctx, id: string): Promise<Category | undefined> {
@@ -129,10 +142,10 @@ export async function deleteCategory(ctx: Ctx, id: string): Promise<boolean> {
   }))?.saved === true;
 }
 
-export async function productsFor(ctx: Ctx, category: CategoryId): Promise<Product[]> {
+export async function productsFor(ctx: Ctx, category: CategoryId, includeHidden = false): Promise<Product[]> {
   await migrateCatalog(ctx);
   const products = (await request<Product[]>(ctx, `/catalog/products?category=${encodeURIComponent(category)}`)) ?? [];
-  return products.sort((a, b) => (a.order ?? a.created_at ?? 0) - (b.order ?? b.created_at ?? 0));
+  return products.filter((product) => includeHidden || product.visible !== false).sort((a, b) => (a.order ?? a.created_at ?? 0) - (b.order ?? b.created_at ?? 0));
 }
 
 export async function productById(ctx: Ctx, id: string): Promise<Product | undefined> {
@@ -186,7 +199,7 @@ export async function deleteProduct(ctx: Ctx, id: string): Promise<boolean> {
   }))?.saved === true;
 }
 
-export async function auditAdminAction(ctx: Ctx, action: "product_added" | "product_deleted", productId: string, timestamp: number): Promise<void> {
+export async function auditAdminAction(ctx: Ctx, action: string, productId: string, timestamp: number): Promise<void> {
   const adminId = ctx.from?.id;
   if (!adminId) return;
   await request(ctx, "/catalog/audit", {

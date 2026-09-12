@@ -13,7 +13,7 @@ export interface Session {
   catalogPage?: number;
   catalogStack?: CatalogView[];
   adminDraft?: AdminProductDraft;
-  adminStep?: "category" | "photo" | "title" | "description" | "price" | "preview" | "section_name" | "section_description" | "section_photo" | "section_preview" | "section_rename";
+  adminStep?: "category" | "photo" | "title" | "description" | "price" | "preview" | "section_name" | "section_description" | "section_photo" | "section_preview" | "section_rename" | "product_sku" | "product_order" | "product_photos" | "category_order" | "search_products";
   adminCategoryParentId?: string;
   adminCategoryTargetId?: string;
   adminCategoryDraft?: AdminCategoryDraft;
@@ -29,17 +29,23 @@ export interface CatalogView {
 
 export interface AdminProductDraft {
   category_id: string;
-  photo_file_id_or_url?: string;
+  photos?: string[];
   title?: string;
   short_description?: string;
   price_minor_units?: number;
+  sku?: string;
+  visible?: boolean;
+  available?: boolean;
+  order?: number;
 }
 
 export interface AdminCategoryDraft {
+  id?: string;
   parent_id?: string;
   title?: string;
   description?: string;
-  image_file_id?: string;
+  visible?: boolean;
+  order?: number;
 }
 
 export type Ctx = BotContext<Session>;
