@@ -48,7 +48,7 @@ export interface WorkerEnv {
 }
 
 interface CatalogState {
-  categories: Record<string, { id: string; title: string; parent_id?: string; order?: number }>;
+  categories: Record<string, { id: string; title: string; order?: number }>;
   categoryIdsByParent?: Record<string, string[]>;
   products: Record<string, unknown>;
   categoryProductIds: Record<string, string[]>;
@@ -58,6 +58,9 @@ interface CatalogState {
   users: Record<string, unknown>;
   auditIds?: string[];
   audit?: Record<string, unknown>;
+  categoryMigrationVersion?: number;
+  categoryReviewReportPending?: boolean;
+  categoryReviewProductIds?: string[];
 }
 
 /**
@@ -72,19 +75,74 @@ export class CatalogDO {
   private async data(): Promise<CatalogState> {
     return (await this.state.storage.get<CatalogState>("catalog")) ?? {
       categories: {
-        male: { id: "male", title: "Мужская" },
-        female: { id: "female", title: "Женская" },
-        kids: { id: "kids", title: "Детская" },
+        clothes: { id: "clothes", title: "Одежда" },
+        shoes: { id: "shoes", title: "Обувь" },
+        accessories: { id: "accessories", title: "Аксессуары" },
       },
-      categoryIdsByParent: { root: ["male", "female", "kids"] },
+      categoryIdsByParent: { root: ["clothes", "shoes", "accessories"] },
       products: {}, categoryProductIds: {}, allProductIds: [], inquiries: {}, inquiryIds: [], users: {}, auditIds: [], audit: {},
     };
+  }
+
+  private migrateCategories(data: CatalogState): unknown[] {
+    if (data.categoryMigrationVersion === 1) return [];
+    const roots = ["clothes", "shoes", "accessories"];
+    const shoe = /сапог|туфл|кроссовк|ботинк|обувь/i;
+    const accessory = /сумк|ремень|шапк|шарф|очк/i;
+    const flagged: string[] = [];
+    const indexedProductIds = new Set<string>(data.allProductIds ?? []);
+    const visit = (categoryId: string) => {
+      for (const productId of data.categoryProductIds[categoryId] ?? []) indexedProductIds.add(productId);
+      for (const childId of data.categoryIdsByParent?.[categoryId] ?? []) visit(childId);
+    };
+    for (const rootId of data.categoryIdsByParent?.root ?? ["male", "female", "kids"]) visit(rootId);
+    const productIds = [...indexedProductIds];
+    data.categories = {
+      clothes: { id: "clothes", title: "Одежда", order: 1 },
+      shoes: { id: "shoes", title: "Обувь", order: 2 },
+      accessories: { id: "accessories", title: "Аксессуары", order: 3 },
+    };
+    data.categoryIdsByParent = { root: roots };
+    data.categoryProductIds = { clothes: [], shoes: [], accessories: [] };
+    data.allProductIds = [];
+    for (const id of productIds) {
+      const product = data.products[id] as Record<string, unknown> | undefined;
+      if (!product) continue;
+      const search = [product.title, product.short_description, product.description, product.tags]
+        .flatMap((v) => Array.isArray(v) ? v : [v]).filter((v): v is string => typeof v === "string").join(" ");
+      const categoryId = shoe.test(search) ? "shoes" : accessory.test(search) ? "accessories" : "clothes";
+      product.category_id = categoryId;
+      product.category = categoryId === "clothes" ? "Одежда" : categoryId === "shoes" ? "Обувь" : "Аксессуары";
+      product.needs_category_review = true;
+      flagged.push(id);
+      data.categoryProductIds[categoryId].push(id);
+      data.allProductIds.push(id);
+    }
+    data.categoryMigrationVersion = 1;
+    data.categoryReviewProductIds = flagged;
+    data.categoryReviewReportPending = flagged.length > 0;
+    return flagged.map((id) => data.products[id]).filter(Boolean);
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\/catalog/, "");
     const data = await this.data();
+    if (request.method === "POST" && path === "/migrate") {
+      const flagged = this.migrateCategories(data);
+      await this.state.storage.put("catalog", data);
+      return Response.json({ flagged });
+    }
+    if (request.method === "GET" && path === "/category-review-report") {
+      const flagged = data.categoryReviewReportPending
+        ? (data.categoryReviewProductIds ?? []).map((id) => data.products[id]).filter(Boolean) : [];
+      return Response.json({ flagged });
+    }
+    if (request.method === "PUT" && path === "/category-review-report") {
+      data.categoryReviewReportPending = false;
+      await this.state.storage.put("catalog", data);
+      return Response.json({ saved: true });
+    }
     if (request.method === "GET" && path === "/product") {
       const item = data.products[url.searchParams.get("id") ?? ""];
       return item ? Response.json(item) : new Response(null, { status: 404 });
@@ -95,48 +153,33 @@ export class CatalogDO {
     }
     if (request.method === "GET" && path === "/categories") {
       const parent = url.searchParams.get("parent");
-      const ids = parent === null
-        ? (data.categoryIdsByParent?.root ?? ["male", "female", "kids"])
-        : (data.categoryIdsByParent?.[parent] ?? []);
+      const ids = parent === null ? (data.categoryIdsByParent?.root ?? ["clothes", "shoes", "accessories"]) : [];
       return Response.json(ids.map((id) => data.categories[id]).filter(Boolean).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
     }
     if (request.method === "GET" && path === "/products") {
       const category = url.searchParams.get("category") ?? "";
-      const descendants = (root: string): string[] => {
-        const result: string[] = [];
-        const visit = (id: string) => {
-          result.push(id);
-          for (const child of data.categoryIdsByParent?.[id] ?? []) visit(child);
-        };
-        visit(root);
-        return result;
-      };
       const ids = category === "all"
-        ? (data.allProductIds ?? ["male", "female", "kids"].flatMap((id) => data.categoryProductIds[id] ?? []))
-        : descendants(category).flatMap((id) => data.categoryProductIds[id] ?? []);
+        ? (data.allProductIds ?? ["clothes", "shoes", "accessories"].flatMap((id) => data.categoryProductIds[id] ?? []))
+        : (data.categoryProductIds[category] ?? []);
       return Response.json(ids.map((id) => data.products[id]).filter(Boolean));
     }
     if (request.method === "GET" && path === "/inquiries") {
       return Response.json((data.inquiryIds ?? []).slice(-50).reverse().map((id) => data.inquiries[id]).filter(Boolean));
     }
     if (request.method === "PUT" && path === "/category") {
-      const category = await request.json() as { id: string; title: string; parent_id?: string; order?: number };
+      const category = await request.json() as { id: string; title: string; order?: number };
       const existing = data.categories[category.id];
-      const oldParent = existing?.parent_id ?? "root";
-      const newParent = category.parent_id ?? "root";
-      data.categoryIdsByParent ??= { root: ["male", "female", "kids"] };
-      if (oldParent !== newParent) data.categoryIdsByParent[oldParent] = (data.categoryIdsByParent[oldParent] ?? []).filter((id) => id !== category.id);
+      data.categoryIdsByParent ??= { root: ["clothes", "shoes", "accessories"] };
       data.categories[category.id] = category;
-      const index = data.categoryIdsByParent[newParent] ?? [];
+      const index = data.categoryIdsByParent.root ?? [];
       if (!index.includes(category.id)) index.push(category.id);
-      data.categoryIdsByParent[newParent] = index;
+      data.categoryIdsByParent.root = index;
     } else if (request.method === "DELETE" && path === "/category") {
       const id = url.searchParams.get("id") ?? "";
       const category = data.categories[id];
-      if (!category || id === "male" || id === "female" || id === "kids" || (data.categoryIdsByParent?.[id]?.length ?? 0) > 0 || (data.categoryProductIds[id]?.length ?? 0) > 0) return new Response("cannot delete", { status: 409 });
-      const parent = category.parent_id ?? "root";
-      data.categoryIdsByParent ??= { root: ["male", "female", "kids"] };
-      data.categoryIdsByParent[parent] = (data.categoryIdsByParent[parent] ?? []).filter((categoryId) => categoryId !== id);
+      if (!category || ["clothes", "shoes", "accessories"].includes(id) || (data.categoryProductIds[id]?.length ?? 0) > 0) return new Response("cannot delete", { status: 409 });
+      data.categoryIdsByParent ??= { root: ["clothes", "shoes", "accessories"] };
+      data.categoryIdsByParent.root = (data.categoryIdsByParent.root ?? []).filter((categoryId) => categoryId !== id);
       delete data.categories[id];
     } else if (request.method === "PUT" && path === "/product") {
       const product = await request.json() as { id: string; category_id: string };
