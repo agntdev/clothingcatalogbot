@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { Ctx, AdminCategoryDraft, AdminProductDraft } from "../bot.js";
-import { auditAdminAction, auditDeniedAdminAction, categoriesFor, categoryById, deleteCategory, deleteProduct, formatPrice, inquiriesForOwner, productById, productsFor, saveCategory, saveProduct, type Category, type Product } from "../catalog.js";
+import { auditAdminAction, auditDeniedAdminAction, categoriesFor, categoryById, clearCartForOwner, deleteCategory, deleteComment, deleteProduct, formatPrice, inquiriesForOwner, markInquiryProcessed, productById, productsFor, recentCommentsForOwner, saveCategory, saveProduct, type Category, type Product } from "../catalog.js";
 import { now } from "../clock.js";
 import { inlineButton, inlineKeyboard, isOwner, requireOwner } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
@@ -26,7 +26,7 @@ function stamp<T extends object>(value: T, ctx: Ctx): T & { updated_by_admin_id:
 
 async function home(ctx: Ctx) {
   await replaceCallbackMessage(ctx, "Управляйте разделами, товарами и заявками.", inlineKeyboard([
-    [inlineButton("Разделы", "admin:catalog")], [inlineButton("Товары", "admin:products:all:1")], [inlineButton("Заявки", "admin:inquiries")], [inlineButton("Настройки", "admin:settings")], back("menu:main"),
+    [inlineButton("Разделы", "admin:catalog")], [inlineButton("Товары", "admin:products:all:1")], [inlineButton("Заявки", "admin:inquiries")], [inlineButton("Заказы из корзины", "admin:cart-inquiries")], [inlineButton("Отзывы", "admin:comments")], [inlineButton("Настройки", "admin:settings")], back("menu:main"),
   ]));
 }
 async function catalog(ctx: Ctx) {
@@ -124,6 +124,17 @@ composer.callbackQuery(/^admin:photo:(remove|up|down):(\d+)$/, async (ctx) => { 
 composer.callbackQuery("admin:photo:done", async (ctx) => { if (await guard(ctx)) await finishProduct(ctx); });
 composer.callbackQuery("admin:cancel", async (ctx) => { if (!(await guard(ctx))) return; clear(ctx); await replaceCallbackMessage(ctx, "Изменения отменены.", inlineKeyboard([back("admin:open"), rowsMenu()])); });
 composer.callbackQuery("admin:inquiries", async (ctx) => { if (!(await guard(ctx))) return; const list = await inquiriesForOwner(ctx); await replaceCallbackMessage(ctx, list.length ? list.slice(0, 20).map((x) => `• ${x.product_snapshot?.title ?? "Товар"}: ${x.user_display_name} — ${x.message_text || "без сообщения"}`).join("\n") : "Заявок пока нет.", inlineKeyboard([back("admin:open"), rowsMenu()])); });
+composer.callbackQuery("admin:cart-inquiries", async (ctx) => {
+  if (!(await guard(ctx))) return;
+  const list = (await inquiriesForOwner(ctx)).filter((item) => item.kind === "cart").slice(0, 15);
+  await replaceCallbackMessage(ctx, list.length ? list.map((item) => `• ${item.user_display_name}: ${(item.cart_snapshot ?? []).map((x) => `${x.title_snapshot} × ${x.qty}`).join(", ")}\nСтатус: ${item.status === "processed" ? "обработан" : "новый"}`).join("\n\n") : "Заказов из корзины пока нет.", inlineKeyboard([
+    ...list.flatMap((item) => [[inlineButton("Отметить обработанным", `admin:cart:processed:${item.id}`)], [inlineButton("Очистить корзину покупателя", `admin:cart:clear:${item.user_id}`)]]), back("admin:open"), rowsMenu(),
+  ]));
+});
+composer.callbackQuery(/^admin:cart:processed:([^:]+)$/, async (ctx) => { if (!(await guard(ctx))) return; await markInquiryProcessed(ctx, ctx.match[1]); await replaceCallbackMessage(ctx, "Заказ отмечен как обработанный.", inlineKeyboard([back("admin:cart-inquiries"), rowsMenu()])); });
+composer.callbackQuery(/^admin:cart:clear:(-?\d+)$/, async (ctx) => { if (!(await guard(ctx))) return; await clearCartForOwner(ctx, Number(ctx.match[1]), now()); await replaceCallbackMessage(ctx, "Корзина покупателя очищена.", inlineKeyboard([back("admin:cart-inquiries"), rowsMenu()])); });
+composer.callbackQuery("admin:comments", async (ctx) => { if (!(await guard(ctx))) return; const list = await recentCommentsForOwner(ctx); await replaceCallbackMessage(ctx, list.length ? list.slice(0, 20).map((item) => `• ${item.user_display_name}: ${item.text}`).join("\n") : "Отзывов пока нет.", inlineKeyboard([...list.slice(0, 20).map((item) => [inlineButton("Удалить отзыв", `admin:comment:delete:${item.id}`), inlineButton("Открыть товар", `product:view:${item.product_id}`)]), back("admin:open"), rowsMenu()])); });
+composer.callbackQuery(/^admin:comment:delete:([^:]+)$/, async (ctx) => { if (!(await guard(ctx))) return; const ok = await deleteComment(ctx, ctx.match[1]); await replaceCallbackMessage(ctx, ok ? "Отзыв удалён." : "Отзыв уже удалён.", inlineKeyboard([back("admin:comments"), rowsMenu()])); });
 composer.callbackQuery(/^admin:parent:([^:]+)$/, async (ctx) => { if (!(await guard(ctx))) return; const target = ctx.session.adminCategoryTargetId; const mode = ctx.session.adminCategoryParentId; if (mode === "new") { clear(ctx); ctx.session.adminCategoryDraft = { parent_id: ctx.match[1], visible: true }; await ask(ctx, "section_name", "Введите название подраздела."); return; } if (target && mode === "move-category") { const c = await categoryById(ctx, target); if (c && ctx.from && c.id !== ctx.match[1]) { await saveCategory(ctx, stamp({ ...c, parent_id: ctx.match[1] }, ctx)); await auditAdminAction(ctx, "category_moved", c.id, now()); } clear(ctx); return catalog(ctx); } if (target && mode === "move-product") { const p = await productById(ctx, target); if (p && ctx.from) { await saveProduct(ctx, stamp({ ...p, category_id: ctx.match[1] }, ctx)); await auditAdminAction(ctx, "product_moved", p.id, now()); } clear(ctx); return productList(ctx, "all", 1); } });
 
 composer.on("message", async (ctx, next) => {

@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
-import { categoryTitle, formatPrice, productById, productPhotos } from "../catalog.js";
+import { categoryTitle, commentsFor, formatPrice, productById, productPhotos } from "../catalog.js";
 import { inlineButton, inlineKeyboard, isOwner } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
 import { pushView } from "../navigation.js";
@@ -20,8 +20,10 @@ composer.callbackQuery(/^product:view:([^:]+)/, async (ctx) => {
     return;
   }
   const photos = productPhotos(product);
-  const text = `${product.title}\n\n${product.short_description}\n\nКатегория: ${categoryTitle(product.category_id)}\nЦена: ${formatPrice(product)}${photos.length ? "" : "\n\nФото недоступно"}`;
-  const rows = [[inlineButton("Задать вопрос", `inquiry:start:${product.id}`)], [inlineButton("Назад", "catalog:back")], [inlineButton("Главное меню", "menu:main")]];
+  const comments = await commentsFor(ctx, product.id);
+  const commentPreview = comments.items.length ? `\n\nОтзывы\n${comments.items.map((item) => `• ${item.user_display_name}: ${item.text}`).join("\n")}` : "\n\nОтзывы: пока нет.";
+  const text = `${product.title}\n\n${product.short_description}\n\nКатегория: ${categoryTitle(product.category_id)}\nЦена: ${formatPrice(product)}${photos.length ? "" : "\n\nФото недоступно"}${commentPreview}`;
+  const rows = [[inlineButton("Добавить в корзину", `cart:add:${product.id}`)], [inlineButton("Задать вопрос", `inquiry:start:${product.id}`)], [inlineButton("Отзывы", `comment:show:${product.id}`), inlineButton("Корзина", "cart:open")], [inlineButton("Назад", "catalog:back")], [inlineButton("Главное меню", "menu:main")]];
   if (isOwner(ctx)) rows.splice(1, 0, [inlineButton("Удалить товар", `admin:product:delete:${product.id}`)]);
   const keyboard = inlineKeyboard(rows);
   // A text message cannot be converted to media with editMessageText. Replace

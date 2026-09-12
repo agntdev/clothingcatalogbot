@@ -18,6 +18,8 @@ export interface Session {
   adminCategoryTargetId?: string;
   adminCategoryDraft?: AdminCategoryDraft;
   adminCategoryPage?: number;
+  commentProductId?: string;
+  commentStartedAt?: number;
 }
 
 export interface CatalogView {
