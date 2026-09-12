@@ -34,4 +34,24 @@
       }
     ]
   }
+  ,
+  {
+    "name": "category navigation replaces the view and Back returns to the menu",
+    "steps": [
+      {
+        "send": { "callback": "category:open:male" },
+        "expect": [
+          { "method": "answerCallbackQuery" },
+          { "method": "editMessageText", "payload": { "text": "Раздел «Мужская». Выберите подраздел или откройте все товары." } }
+        ]
+      },
+      {
+        "send": { "callback": "catalog:back" },
+        "expect": [
+          { "method": "answerCallbackQuery" },
+          { "method": "editMessageText", "payload": { "text": "Выберите раздел. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом." } }
+        ]
+      }
+    ]
+  }
 ]

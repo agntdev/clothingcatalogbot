@@ -23,6 +23,7 @@ export interface Product {
   currency: string;
   created_by_admin_id?: number;
   created_at?: number;
+  order?: number;
 }
 
 export interface Inquiry {
@@ -101,7 +102,8 @@ export async function deleteCategory(ctx: Ctx, id: string): Promise<boolean> {
 }
 
 export async function productsFor(ctx: Ctx, category: CategoryId): Promise<Product[]> {
-  return (await request<Product[]>(ctx, `/catalog/products?category=${encodeURIComponent(category)}`)) ?? [];
+  const products = (await request<Product[]>(ctx, `/catalog/products?category=${encodeURIComponent(category)}`)) ?? [];
+  return products.sort((a, b) => (a.order ?? a.created_at ?? 0) - (b.order ?? b.created_at ?? 0));
 }
 
 export async function productById(ctx: Ctx, id: string): Promise<Product | undefined> {
@@ -135,6 +137,11 @@ export async function markInquirySent(ctx: Ctx, id: string, sentAt: number): Pro
     method: "PUT",
     body: JSON.stringify({ id, sent_at: sentAt }),
   });
+}
+
+/** Owner-only inbox is read through the durable inquiry index, never a key scan. */
+export async function inquiriesForOwner(ctx: Ctx): Promise<Inquiry[]> {
+  return (await request<Inquiry[]>(ctx, "/catalog/inquiries")) ?? [];
 }
 
 export async function saveProduct(ctx: Ctx, product: Product): Promise<boolean> {

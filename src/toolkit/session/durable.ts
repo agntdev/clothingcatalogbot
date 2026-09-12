@@ -43,6 +43,8 @@ export interface WorkerEnv {
   BOT_TELEMETRY_URL?: string;
   BOT_TELEMETRY_SECRET?: string;
   BOT_TELEMETRY_SALT?: string;
+  ADMIN_CHAT_ID?: string;
+  BOT_OWNER_ID?: string;
 }
 
 interface CatalogState {
@@ -96,14 +98,26 @@ export class CatalogDO {
       const ids = parent === null
         ? (data.categoryIdsByParent?.root ?? ["male", "female", "kids"])
         : (data.categoryIdsByParent?.[parent] ?? []);
-      return Response.json(ids.map((id) => data.categories[id]).filter(Boolean));
+      return Response.json(ids.map((id) => data.categories[id]).filter(Boolean).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
     }
     if (request.method === "GET" && path === "/products") {
       const category = url.searchParams.get("category") ?? "";
+      const descendants = (root: string): string[] => {
+        const result: string[] = [];
+        const visit = (id: string) => {
+          result.push(id);
+          for (const child of data.categoryIdsByParent?.[id] ?? []) visit(child);
+        };
+        visit(root);
+        return result;
+      };
       const ids = category === "all"
         ? (data.allProductIds ?? ["male", "female", "kids"].flatMap((id) => data.categoryProductIds[id] ?? []))
-        : data.categoryProductIds[category] ?? [];
+        : descendants(category).flatMap((id) => data.categoryProductIds[id] ?? []);
       return Response.json(ids.map((id) => data.products[id]).filter(Boolean));
+    }
+    if (request.method === "GET" && path === "/inquiries") {
+      return Response.json((data.inquiryIds ?? []).slice(-50).reverse().map((id) => data.inquiries[id]).filter(Boolean));
     }
     if (request.method === "PUT" && path === "/category") {
       const category = await request.json() as { id: string; title: string; parent_id?: string; order?: number };

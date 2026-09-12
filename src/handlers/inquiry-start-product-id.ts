@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { Ctx } from "../bot.js";
-import { markInquirySent, productById, saveInquiry, saveUser, type Inquiry, type Product } from "../catalog.js";
+import { formatPrice, markInquirySent, productById, saveInquiry, saveUser, type Inquiry, type Product } from "../catalog.js";
 import { now } from "../clock.js";
 import { adminChatId, inlineButton, inlineKeyboard, urlButton } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
@@ -42,7 +42,7 @@ async function notifyAdmin(ctx: Ctx, inquiry: Inquiry, product: Product): Promis
     "Новая заявка по товару",
     `Товар: ${product.title}`,
     `Описание: ${product.short_description}`,
-    `Цена: ${product.price_minor_units / 100} ₽`,
+    `Цена: ${formatPrice(product)}`,
     `Сообщение: ${inquiry.message_text || "—"}`,
       `Покупатель: ${inquiry.user_display_name}${inquiry.username ? ` (@${inquiry.username})` : ""} (Telegram ID: ${inquiry.user_id})`,
       "Для ответа используйте кнопку ниже.",

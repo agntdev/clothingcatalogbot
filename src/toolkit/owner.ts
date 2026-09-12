@@ -15,6 +15,7 @@
 /** Common platform names for env keys of kind admin_id. */
 export const ADMIN_ID_ENV_KEYS = [
   "ADMIN_CHAT_ID",
+  "BOT_OWNER_ID",
   "OWNER_ADMIN_ID",
   "OWNER_TELEGRAM_ID",
   "ADMIN_TELEGRAM_ID",
