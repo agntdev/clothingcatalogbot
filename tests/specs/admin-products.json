@@ -1,6 +1,6 @@
 [
   {
-    "name": "catalog management is protected when owner access is not configured",
+    "name": "admin panel is protected when administrator access is not configured",
     "steps": [
       {
         "send": { "callback": "admin:open" },
@@ -10,37 +10,37 @@
   }
   ,
   {
-    "name": "add category is protected when owner access is not configured",
+    "name": "category management is protected when administrator access is not configured",
     "steps": [
       {
-        "send": { "callback": "admin:category:add" },
+        "send": { "callback": "admin:categories" },
         "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
       }
     ]
   },
   {
-    "name": "product deletion is protected when owner access is not configured",
+    "name": "product deletion is protected when administrator access is not configured",
     "steps": [
       {
-        "send": { "callback": "admin:product:delete:missing-product" },
+        "send": { "callback": "admin:delete:product:missing-product" },
         "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
       }
     ]
   },
   {
-    "name": "a non-owner cannot open private inquiries",
+    "name": "a non-admin cannot open the edit list",
     "steps": [
       {
-        "send": { "callback": "admin:inquiries", "userId": 42 },
+        "send": { "callback": "admin:edit:list:1", "userId": 42 },
         "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
       }
     ]
   },
   {
-    "name": "adding a product stays protected until owner access is configured",
+    "name": "adding a product stays protected until administrator access is configured",
     "steps": [
       {
-        "send": { "callback": "admin:product:add:male" },
+        "send": { "callback": "admin:add" },
         "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
       }
     ]

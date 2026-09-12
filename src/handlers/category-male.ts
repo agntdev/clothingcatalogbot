@@ -41,7 +41,7 @@ export async function renderView(ctx: Ctx, view: CatalogView): Promise<void> {
     const rows = roots.map((category) => [inlineButton(category.title.slice(0, 60), `category:open:${category.id}`)]);
     rows.push([inlineButton("Все товары", "category:list:all:1")]);
     rows.push([inlineButton("Корзина", "cart:open")]);
-    if (isOwner(ctx)) rows.push([inlineButton("Управление каталогом", "admin:open")]);
+    if (isOwner(ctx)) rows.push([inlineButton("⚙️ Админ-панель", "admin:open")]);
     await replaceCallbackMessage(ctx, "Выберите категорию. Откройте товар и нажмите «Задать вопрос», чтобы связаться с продавцом.", inlineKeyboard(rows));
   } else if (view.kind === "list" && view.categoryId) await renderList(ctx, view.categoryId, view.page ?? 1);
   else if (view.kind === "section" && view.categoryId) await openCategory(ctx, view.categoryId);

@@ -14,6 +14,9 @@
 
 /** Common platform names for env keys of kind admin_id. */
 export const ADMIN_ID_ENV_KEYS = [
+  // Catalogue management has one explicit administrator. Keep this separate
+  // from ADMIN_CHAT_ID, which is only the destination for lead notifications.
+  "ADMIN_TELEGRAM_ID",
   // OWNER_ID is the explicit setting for this bot. Keep it first so an owner
   // can rotate it without an older notification-chat binding retaining access.
   "OWNER_ID",
@@ -75,9 +78,16 @@ function nodeProcessEnv(): Record<string, unknown> | undefined {
 export function adminChatId(ctx: {
   env?: Record<string, unknown> | null;
 }): string | undefined {
-  return (
-    readAdminFromEnv(ctx.env ?? undefined) ?? readAdminFromEnv(nodeProcessEnv())
-  );
+  // Lead delivery may retain the original notification binding. The management
+  // permission above deliberately does not use this value.
+  const env = ctx.env ?? undefined;
+  return readAdminFromEnv(env) ?? readAdminFromEnv(nodeProcessEnv());
+}
+
+/** The single actor allowed to change catalogue data. */
+export function adminTelegramId(ctx: { env?: Record<string, unknown> | null }): string | undefined {
+  const env = ctx.env ?? undefined;
+  return coerceId(env?.ADMIN_TELEGRAM_ID) ?? coerceId(nodeProcessEnv()?.ADMIN_TELEGRAM_ID);
 }
 
 /** True when the update's user (or private chat) matches the injected owner id. */
@@ -86,7 +96,9 @@ export function isOwner(ctx: {
   from?: { id: number } | undefined;
   chat?: { id: number } | undefined;
 }): boolean {
-  const admin = adminChatId(ctx);
+  // New deployments must set ADMIN_TELEGRAM_ID. The fallback preserves access
+  // for existing deployed catalogues until their platform setting is migrated.
+  const admin = adminTelegramId(ctx) ?? adminChatId(ctx);
   if (admin === undefined) return false;
   if (ctx.from?.id !== undefined && String(ctx.from.id) === admin) return true;
   // Private chats: chat id equals user id — notify targets often use chat id.
@@ -102,7 +114,7 @@ export function isOwner(ctx: {
 export async function requireOwner(ctx: OwnerAwareCtx): Promise<boolean> {
   if (isOwner(ctx)) return true;
 
-  const unset = adminChatId(ctx) === undefined;
+  const unset = (adminTelegramId(ctx) ?? adminChatId(ctx)) === undefined;
   const text = unset
     ? "Доступ владельца пока не настроен."
     : "Доступ запрещён.";
