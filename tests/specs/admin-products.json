@@ -26,5 +26,14 @@
         "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
       }
     ]
+  },
+  {
+    "name": "a non-owner cannot open private inquiries",
+    "steps": [
+      {
+        "send": { "callback": "admin:inquiries", "userId": 42 },
+        "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
+      }
+    ]
   }
 ]

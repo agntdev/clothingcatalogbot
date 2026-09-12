@@ -22,7 +22,7 @@ composer.callbackQuery(/^product:view:([^:]+)/, async (ctx) => {
   const photos = productPhotos(product);
   const text = `${product.title}\n\n${product.short_description}\n\nКатегория: ${categoryTitle(product.category_id)}\nЦена: ${formatPrice(product)}${photos.length ? "" : "\n\nФото недоступно"}`;
   const rows = [[inlineButton("Задать вопрос", `inquiry:start:${product.id}`)], [inlineButton("Назад", "catalog:back")], [inlineButton("Главное меню", "menu:main")]];
-  if (isOwner(ctx)) rows.splice(1, 0, [inlineButton("Удалить товар", `admin:delete:${product.id}`)]);
+  if (isOwner(ctx)) rows.splice(1, 0, [inlineButton("Удалить товар", `admin:product:delete:${product.id}`)]);
   const keyboard = inlineKeyboard(rows);
   // A text message cannot be converted to media with editMessageText. Replace
   // it with the product photo so the catalogue remains a single active view.

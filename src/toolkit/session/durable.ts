@@ -44,6 +44,7 @@ export interface WorkerEnv {
   BOT_TELEMETRY_SECRET?: string;
   BOT_TELEMETRY_SALT?: string;
   ADMIN_CHAT_ID?: string;
+  OWNER_ID?: string;
   BOT_OWNER_ID?: string;
 }
 
@@ -86,7 +87,14 @@ interface CatalogState {
  * through this same binding before the catalogue is made public.
  */
 export class CatalogDO {
-  constructor(private readonly state: DOState) {}
+  constructor(private readonly state: DOState, private readonly env: WorkerEnv) {}
+
+  private isOwnerRequest(request: Request): boolean {
+    // OWNER_ID is the access-control setting; ADMIN_CHAT_ID remains a backwards
+    // compatible owner identity for existing deployments.
+    const owner = this.env.OWNER_ID ?? this.env.ADMIN_CHAT_ID ?? this.env.BOT_OWNER_ID;
+    return Boolean(owner && request.headers.get("x-agntdev-actor-id") === String(owner));
+  }
 
   private async data(): Promise<CatalogState> {
     return (await this.state.storage.get<CatalogState>("catalog")) ?? {
@@ -147,9 +155,11 @@ export class CatalogDO {
       return Response.json(ids.map((id) => data.products[id]).filter(Boolean));
     }
     if (request.method === "GET" && path === "/inquiries") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
       return Response.json((data.inquiryIds ?? []).slice(-50).reverse().map((id) => data.inquiries[id]).filter(Boolean));
     }
     if (request.method === "PUT" && path === "/category") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
       const category = await request.json() as CatalogCategory;
       if (!category.id || !category.title?.trim() || category.title.trim().length > 100 || (category.description?.length ?? 0) > 2000) return new Response("invalid category", { status: 400 });
       data.categoryIdsByParent ??= { root: ["male", "female", "kids"] };
@@ -173,6 +183,7 @@ export class CatalogDO {
       if (!index.includes(category.id)) index.push(category.id);
       data.categoryIdsByParent[parentKey] = index;
     } else if (request.method === "DELETE" && path === "/category") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
       const id = url.searchParams.get("id") ?? "";
       const category = data.categories[id];
       if (!category || (data.categoryProductIds[id]?.length ?? 0) > 0) return new Response("cannot delete", { status: 409 });
@@ -182,6 +193,7 @@ export class CatalogDO {
       data.categoryIdsByParent[parentKey] = (data.categoryIdsByParent[parentKey] ?? []).filter((categoryId) => categoryId !== id);
       delete data.categories[id];
     } else if (request.method === "PUT" && path === "/product") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
       const product = await request.json() as { id: string; category_id: string; title?: string; price_minor_units?: number };
       if (!product.id || !product.category_id || !data.categories[product.category_id] || !product.title?.trim() || typeof product.price_minor_units !== "number" || !Number.isInteger(product.price_minor_units) || product.price_minor_units <= 0) {
         return new Response("invalid product", { status: 400 });
@@ -197,6 +209,7 @@ export class CatalogDO {
       data.allProductIds ??= [];
       if (!data.allProductIds.includes(product.id)) data.allProductIds.push(product.id);
     } else if (request.method === "DELETE" && path === "/product") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
       const id = url.searchParams.get("id") ?? "";
       const existing = data.products[id] as { category_id?: string } | undefined;
       if (existing?.category_id) data.categoryProductIds[existing.category_id] = (data.categoryProductIds[existing.category_id] ?? []).filter((productId) => productId !== id);
@@ -215,6 +228,9 @@ export class CatalogDO {
       if (inquiry) inquiry.sent_to_admin_at = update.sent_at;
     } else if (request.method === "PUT" && path === "/audit") {
       const action = await request.json() as { admin_id: number; action: string; product_id: string; timestamp: number };
+      const isDeniedAttempt = action.action === "admin_access_denied";
+      const sameActor = request.headers.get("x-agntdev-actor-id") === String(action.admin_id);
+      if ((!isDeniedAttempt && !this.isOwnerRequest(request)) || !sameActor) return new Response("forbidden", { status: 403 });
       const id = `${action.timestamp}:${action.admin_id}:${action.product_id}:${action.action}`;
       data.audit ??= {};
       data.auditIds ??= [];
@@ -313,7 +329,7 @@ export class ChatDO {
     // Domain records share this durable namespace but live in the dedicated
     // "catalog" instance, addressed by catalog.ts as idFromName("catalog").
     if (url.pathname.startsWith("/catalog/")) {
-      return new CatalogDO(this.state).fetch(request);
+      return new CatalogDO(this.state, this.env).fetch(request);
     }
 
     // Session storage (routed here by createDurableSessionStorage).

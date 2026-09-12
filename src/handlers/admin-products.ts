@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { Ctx, AdminCategoryDraft, AdminProductDraft } from "../bot.js";
-import { auditAdminAction, categoriesFor, categoryById, deleteCategory, deleteProduct, formatPrice, inquiriesForOwner, productById, productsFor, saveCategory, saveProduct, type Category, type Product } from "../catalog.js";
+import { auditAdminAction, auditDeniedAdminAction, categoriesFor, categoryById, deleteCategory, deleteProduct, formatPrice, inquiriesForOwner, productById, productsFor, saveCategory, saveProduct, type Category, type Product } from "../catalog.js";
 import { now } from "../clock.js";
 import { inlineButton, inlineKeyboard, isOwner, requireOwner } from "../toolkit/index.js";
 import { answerCallback, replaceCallbackMessage } from "../callbacks.js";
@@ -13,7 +13,15 @@ function rowsMenu() { return [inlineButton("Главное меню", "menu:main
 function back(data: string) { return [inlineButton("Назад", data)]; }
 function clear(ctx: Ctx) { ctx.session.adminDraft = undefined; ctx.session.adminCategoryDraft = undefined; ctx.session.adminStep = undefined; ctx.session.adminCategoryTargetId = undefined; ctx.session.adminCategoryParentId = undefined; }
 function productDraft(ctx: Ctx) { return ctx.session.adminDraft as (AdminProductDraft & { id?: string; created_at?: number }) | undefined; }
-async function guard(ctx: Ctx) { if (!isOwner(ctx)) return requireOwner(ctx); await answerCallback(ctx); return true; }
+async function guard(ctx: Ctx) {
+  if (!isOwner(ctx)) {
+    await requireOwner(ctx);
+    await auditDeniedAdminAction(ctx, ctx.callbackQuery?.data ?? "admin_message", now());
+    return false;
+  }
+  await answerCallback(ctx);
+  return true;
+}
 function stamp<T extends object>(value: T, ctx: Ctx): T & { updated_by_admin_id: number; updated_at: number } { return { ...value, updated_by_admin_id: ctx.from!.id, updated_at: now() }; }
 
 async function home(ctx: Ctx) {
