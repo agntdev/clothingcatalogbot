@@ -58,6 +58,9 @@ interface CatalogCategory {
   image_file_id?: string;
   created_by_admin_id?: number;
   created_at?: number;
+  visible?: boolean;
+  updated_by_admin_id?: number;
+  updated_at?: number;
 }
 
 interface CatalogState {
@@ -88,53 +91,19 @@ export class CatalogDO {
   private async data(): Promise<CatalogState> {
     return (await this.state.storage.get<CatalogState>("catalog")) ?? {
       categories: {
-        clothes: { id: "clothes", title: "Одежда" },
-        shoes: { id: "shoes", title: "Обувь" },
-        accessories: { id: "accessories", title: "Аксессуары" },
+        male: { id: "male", title: "Мужская", order: 1, visible: true },
+        female: { id: "female", title: "Женская", order: 2, visible: true },
+        kids: { id: "kids", title: "Детская", order: 3, visible: true },
       },
-      categoryIdsByParent: { root: ["clothes", "shoes", "accessories"] },
+      categoryIdsByParent: { root: ["male", "female", "kids"] },
       products: {}, categoryProductIds: {}, allProductIds: [], inquiries: {}, inquiryIds: [], users: {}, auditIds: [], audit: {},
     };
   }
 
   private migrateCategories(data: CatalogState): unknown[] {
-    if (data.categoryMigrationVersion === 1) return [];
-    const roots = ["clothes", "shoes", "accessories"];
-    const shoe = /сапог|туфл|кроссовк|ботинк|обувь/i;
-    const accessory = /сумк|ремень|шапк|шарф|очк/i;
-    const flagged: string[] = [];
-    const indexedProductIds = new Set<string>(data.allProductIds ?? []);
-    const visit = (categoryId: string) => {
-      for (const productId of data.categoryProductIds[categoryId] ?? []) indexedProductIds.add(productId);
-      for (const childId of data.categoryIdsByParent?.[categoryId] ?? []) visit(childId);
-    };
-    for (const rootId of data.categoryIdsByParent?.root ?? ["male", "female", "kids"]) visit(rootId);
-    const productIds = [...indexedProductIds];
-    data.categories = {
-      clothes: { id: "clothes", title: "Одежда", order: 1 },
-      shoes: { id: "shoes", title: "Обувь", order: 2 },
-      accessories: { id: "accessories", title: "Аксессуары", order: 3 },
-    };
-    data.categoryIdsByParent = { root: roots };
-    data.categoryProductIds = { clothes: [], shoes: [], accessories: [] };
-    data.allProductIds = [];
-    for (const id of productIds) {
-      const product = data.products[id] as Record<string, unknown> | undefined;
-      if (!product) continue;
-      const search = [product.title, product.short_description, product.description, product.tags]
-        .flatMap((v) => Array.isArray(v) ? v : [v]).filter((v): v is string => typeof v === "string").join(" ");
-      const categoryId = shoe.test(search) ? "shoes" : accessory.test(search) ? "accessories" : "clothes";
-      product.category_id = categoryId;
-      product.category = categoryId === "clothes" ? "Одежда" : categoryId === "shoes" ? "Обувь" : "Аксессуары";
-      product.needs_category_review = true;
-      flagged.push(id);
-      data.categoryProductIds[categoryId].push(id);
-      data.allProductIds.push(id);
-    }
-    data.categoryMigrationVersion = 1;
-    data.categoryReviewProductIds = flagged;
-    data.categoryReviewReportPending = flagged.length > 0;
-    return flagged.map((id) => data.products[id]).filter(Boolean);
+    if (data.categoryMigrationVersion === 2) return [];
+    data.categoryMigrationVersion = 2;
+    return [];
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -183,7 +152,7 @@ export class CatalogDO {
     if (request.method === "PUT" && path === "/category") {
       const category = await request.json() as CatalogCategory;
       if (!category.id || !category.title?.trim() || category.title.trim().length > 100 || (category.description?.length ?? 0) > 2000) return new Response("invalid category", { status: 400 });
-      data.categoryIdsByParent ??= { root: ["clothes", "shoes", "accessories"] };
+      data.categoryIdsByParent ??= { root: ["male", "female", "kids"] };
       const parentKey = category.parent_id ?? "root";
       const index = data.categoryIdsByParent[parentKey] ?? [];
       const duplicate = index.map((id) => data.categories[id]).find((item) => item && item.id !== category.id && item.title.trim().toLocaleLowerCase("ru-RU") === category.title.trim().toLocaleLowerCase("ru-RU"));
@@ -206,14 +175,17 @@ export class CatalogDO {
     } else if (request.method === "DELETE" && path === "/category") {
       const id = url.searchParams.get("id") ?? "";
       const category = data.categories[id];
-      if (!category || ["clothes", "shoes", "accessories"].includes(id) || (data.categoryProductIds[id]?.length ?? 0) > 0) return new Response("cannot delete", { status: 409 });
-      data.categoryIdsByParent ??= { root: ["clothes", "shoes", "accessories"] };
+      if (!category || (data.categoryProductIds[id]?.length ?? 0) > 0) return new Response("cannot delete", { status: 409 });
+      data.categoryIdsByParent ??= { root: ["male", "female", "kids"] };
       const parentKey = category.parent_id ?? "root";
       if ((data.categoryIdsByParent[id]?.length ?? 0) > 0) return new Response("has children", { status: 409 });
       data.categoryIdsByParent[parentKey] = (data.categoryIdsByParent[parentKey] ?? []).filter((categoryId) => categoryId !== id);
       delete data.categories[id];
     } else if (request.method === "PUT" && path === "/product") {
-      const product = await request.json() as { id: string; category_id: string };
+      const product = await request.json() as { id: string; category_id: string; title?: string; price_minor_units?: number };
+      if (!product.id || !product.category_id || !data.categories[product.category_id] || !product.title?.trim() || typeof product.price_minor_units !== "number" || !Number.isInteger(product.price_minor_units) || product.price_minor_units <= 0) {
+        return new Response("invalid product", { status: 400 });
+      }
       const existing = data.products[product.id] as { category_id?: string } | undefined;
       if (existing?.category_id && existing.category_id !== product.category_id) {
         data.categoryProductIds[existing.category_id] = (data.categoryProductIds[existing.category_id] ?? []).filter((id) => id !== product.id);

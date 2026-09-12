@@ -17,5 +17,14 @@
         "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
       }
     ]
+  },
+  {
+    "name": "product deletion is protected when owner access is not configured",
+    "steps": [
+      {
+        "send": { "callback": "admin:product:delete:missing-product" },
+        "expect": [{ "method": "sendMessage", "payload": { "text": "Доступ владельца пока не настроен." } }]
+      }
+    ]
   }
 ]
