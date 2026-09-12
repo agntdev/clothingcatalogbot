@@ -18,7 +18,15 @@ composer.callbackQuery(/^product:view:([^:]+)/, async (ctx) => {
   const text = `${product.title}\n\n${product.short_description}\n\n${formatPrice(product)}${product.photo_file_id_or_url ? "" : "\n\nФото недоступно"}`;
   const rows = [[inlineButton("Задать вопрос", `inquiry:start:${product.id}`)], [inlineButton("Назад", "catalog:back")], [inlineButton("В главное меню", "menu:main")]];
   if (isOwner(ctx)) rows.splice(1, 0, [inlineButton("Удалить товар", `admin:delete:${product.id}`)]);
-  await replaceCallbackMessage(ctx, text, inlineKeyboard(rows));
+  const keyboard = inlineKeyboard(rows);
+  // A text message cannot be converted to media with editMessageText. Replace
+  // it with the product photo so the catalogue remains a single active view.
+  if (product.photo_file_id_or_url && ctx.callbackQuery.message && !("photo" in ctx.callbackQuery.message)) {
+    try { await ctx.deleteMessage(); } catch { /* old messages may be immutable */ }
+    await ctx.replyWithPhoto(product.photo_file_id_or_url, { caption: text, reply_markup: keyboard });
+    return;
+  }
+  await replaceCallbackMessage(ctx, text, keyboard);
 });
 
 export default composer;
