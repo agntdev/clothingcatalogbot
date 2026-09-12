@@ -142,3 +142,27 @@ describe("ChatDO — Durable Object reminders + session", () => {
     expect(r.status).toBe(204);
   });
 });
+
+describe("CatalogDO product creation", () => {
+  it("creates multiple products in one category without replacing an earlier product", async () => {
+    const catalog = new ChatDO(fakeState(), {
+      BOT_TOKEN: "T",
+      ADMIN_CHAT_ID: "77",
+    } as unknown as WorkerEnv);
+    const headers = { "content-type": "application/json", "x-agntdev-actor-id": "77" };
+
+    for (const title of ["Пальто", "Куртка", "Рубашка"]) {
+      const response = await catalog.fetch(new Request("https://do/catalog/product", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ category_id: "male", title, short_description: "", price_minor_units: 199900, currency: "RUB" }),
+      }));
+      expect(response.status).toBe(200);
+    }
+
+    const response = await catalog.fetch(new Request("https://do/catalog/products?category=male"));
+    const products = await response.json() as Array<{ id: string; title: string }>;
+    expect(products.map((product) => product.title)).toEqual(["Пальто", "Куртка", "Рубашка"]);
+    expect(new Set(products.map((product) => product.id)).size).toBe(3);
+  });
+});

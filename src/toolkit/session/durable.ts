@@ -231,6 +231,23 @@ export class CatalogDO {
       if ((data.categoryIdsByParent[id]?.length ?? 0) > 0) return new Response("has children", { status: 409 });
       data.categoryIdsByParent[parentKey] = (data.categoryIdsByParent[parentKey] ?? []).filter((categoryId) => categoryId !== id);
       delete data.categories[id];
+    } else if (request.method === "POST" && path === "/product") {
+      if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
+      const incoming = await request.json() as { category_id: string; title?: string; price_minor_units?: number } & Record<string, unknown>;
+      if (!incoming.category_id || !data.categories[incoming.category_id] || !incoming.title?.trim() || typeof incoming.price_minor_units !== "number" || !Number.isInteger(incoming.price_minor_units) || incoming.price_minor_units <= 0) {
+        return new Response("invalid product", { status: 400 });
+      }
+      // Product ids, not category/shop ids, are the primary identity. A category
+      // index may contain any number of products, so there is no per-shop limit.
+      const product = { ...incoming, id: crypto.randomUUID(), title: incoming.title.trim() };
+      data.products[product.id] = product;
+      const index = data.categoryProductIds[product.category_id] ?? [];
+      index.push(product.id);
+      data.categoryProductIds[product.category_id] = index;
+      data.allProductIds ??= [];
+      data.allProductIds.push(product.id);
+      await this.state.storage.put("catalog", data);
+      return Response.json(product);
     } else if (request.method === "PUT" && path === "/product") {
       if (!this.isOwnerRequest(request)) return new Response("forbidden", { status: 403 });
       const product = await request.json() as { id: string; category_id: string; title?: string; price_minor_units?: number };
