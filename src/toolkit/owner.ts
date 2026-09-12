@@ -14,6 +14,9 @@
 
 /** Common platform names for env keys of kind admin_id. */
 export const ADMIN_ID_ENV_KEYS = [
+  // OWNER_ID is the explicit setting for this bot. Keep it first so an owner
+  // can rotate it without an older notification-chat binding retaining access.
+  "OWNER_ID",
   "ADMIN_CHAT_ID",
   "BOT_OWNER_ID",
   "OWNER_ADMIN_ID",
@@ -22,7 +25,6 @@ export const ADMIN_ID_ENV_KEYS = [
   "OWNER_CHAT_ID",
   "BOT_ADMIN_ID",
   "ADMIN_ID",
-  "OWNER_ID",
   "OWNER_ALERT_CHAT_ID",
   "ADMIN_NOTIFICATION_CHAT_ID",
 ] as const;

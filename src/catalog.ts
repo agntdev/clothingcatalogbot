@@ -78,9 +78,15 @@ async function request<T>(ctx: Ctx, path: string, init?: RequestInit): Promise<T
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CATALOG_TIMEOUT_MS);
   try {
+    // CatalogDO is an internal API, but administrative writes still carry the
+    // Telegram actor id so the Durable Object can independently enforce owner
+    // access. This is intentionally not a user-supplied value.
+    const headers = new Headers(init?.headers);
+    if (ctx.from?.id !== undefined) headers.set("x-agntdev-actor-id", String(ctx.from.id));
+    if (init?.body) headers.set("content-type", "application/json");
     const response = await target.fetch(`https://catalog${path}`, {
       ...init,
-      ...(init?.body ? { headers: { "content-type": "application/json" } } : {}),
+      headers,
       signal: controller.signal,
     });
     if (!response.ok) return undefined;
@@ -205,6 +211,16 @@ export async function auditAdminAction(ctx: Ctx, action: string, productId: stri
   await request(ctx, "/catalog/audit", {
     method: "PUT",
     body: JSON.stringify({ admin_id: adminId, action, product_id: productId, timestamp }),
+  });
+}
+
+/** Record a rejected administrative action without granting any mutation. */
+export async function auditDeniedAdminAction(ctx: Ctx, action: string, timestamp: number): Promise<void> {
+  const actorId = ctx.from?.id;
+  if (!actorId) return;
+  await request(ctx, "/catalog/audit", {
+    method: "PUT",
+    body: JSON.stringify({ admin_id: actorId, action: "admin_access_denied", product_id: action.slice(0, 64), timestamp }),
   });
 }
 
